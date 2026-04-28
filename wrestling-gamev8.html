@@ -1,0 +1,2075 @@
+<!DOCTYPE html>
+
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>PRO WRESTLING FURY</title>
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+        :root { --p1:#00cfff; --p2:#ff4444; --gold:#ffd700; --dark:#0a0a0f; }
+        *{ box-sizing:border-box; margin:0; padding:0; }
+        body{
+            font-family:'Press Start 2P','Courier New',monospace;
+            background:var(--dark); color:#fff;
+            touch-action:none; overscroll-behavior:none;
+            user-select:none; -webkit-user-select:none;
+            display:flex; align-items:center; justify-content:center;
+            min-height:100dvh; overflow:hidden;
+        }
+        body::after{
+            content:''; position:fixed; inset:0; pointer-events:none; z-index:9999;
+            background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.07) 2px,rgba(0,0,0,0.07) 4px);
+        }
+        #game-container{
+            position:relative; width:100%; max-width:400px;
+            height:100dvh; max-height:860px;
+            background:#06060e; display:flex; flex-direction:column; overflow:hidden;
+            box-shadow:0 0 60px rgba(0,207,255,0.12),0 0 120px rgba(255,68,68,0.08);
+        }
+        @media(min-width:420px){
+            #game-container{ border:3px solid #222; border-radius:12px; height:860px; }
+        }
+        /* HUD */
+        #hud{
+            height:62px; background:linear-gradient(180deg,#111 0%,#0a0a0f 100%);
+            border-bottom:2px solid #1a1a2e; display:flex; align-items:center;
+            padding:5px 8px; gap:8px; position:relative; z-index:10; flex-shrink:0;
+        }
+        .fighter-hud{ flex:1; display:flex; flex-direction:column; gap:4px; }
+        .fighter-hud.right{ align-items:flex-end; }
+        .fighter-name{ font-size:7px; letter-spacing:1px; }
+        .fighter-hud.left .fighter-name{ color:var(--p1); text-shadow:0 0 8px var(--p1); }
+        .fighter-hud.right .fighter-name{ color:var(--p2); text-shadow:0 0 8px var(--p2); }
+        .hp-wrap{ width:100%; height:10px; background:#1a0000; border:1px solid #333; overflow:hidden; }
+        .hp-bar{ height:100%; background:linear-gradient(90deg,#ff6b00,#ffd700); transition:width 0.15s ease-out; }
+        .fighter-hud.right .hp-bar{ margin-left:auto; }
+        .sp-wrap{ width:100%; height:5px; background:#050514; border:1px solid #1a1a2e; overflow:hidden; }
+        .sp-bar{ height:100%; background:linear-gradient(90deg,#0050ff,#00cfff); transition:width 0.2s ease-out; }
+        .fighter-hud.right .sp-bar{ margin-left:auto; }
+        @keyframes spPulse{ 0%,100%{box-shadow:0 0 4px #00cfff;} 50%{box-shadow:0 0 14px #00cfff,0 0 24px #fff;opacity:.8;} }
+        .sp-bar.sp-max{ animation:spPulse .7s infinite; background:linear-gradient(90deg,#00cfff,#fff)!important; }
+        #hud-center{ display:flex; flex-direction:column; align-items:center; gap:2px; min-width:46px; }
+        #round-label{ font-size:6px; color:#555; letter-spacing:1px; }
+        #timer-display{ font-size:15px; color:var(--gold); text-shadow:0 0 10px var(--gold); line-height:1; }
+        #timer-display.danger{ color:#ff2222; text-shadow:0 0 10px #ff2222; animation:timerFlash .5s infinite; }
+        @keyframes timerFlash{ 50%{opacity:.4;} }
+        /* Ring */
+        #ring-container{ flex-grow:1; position:relative; overflow:hidden; background:#000; }
+        canvas{ position:absolute; inset:0; width:100%; height:100%; image-rendering:pixelated; }
+        #gameCanvas{ z-index:10; }
+        #bgCanvas{ z-index:0; }
+        #fxCanvas{ z-index:20; pointer-events:none; }
+        #touch-layer{ position:absolute; inset:0; z-index:30; }
+        /* Messages */
+        #center-message{
+            position:absolute; top:50%; left:50%;
+            transform:translate(-50%,-50%) scale(0);
+            z-index:40; font-size:26px; color:#fff; text-align:center;
+            white-space:pre-line; pointer-events:none; display:none;
+            text-shadow:4px 4px 0 #000,-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,0 0 30px currentColor;
+        }
+        @keyframes popIn{
+            0%{transform:translate(-50%,-50%) scale(0) rotate(-8deg);opacity:0;}
+            60%{transform:translate(-50%,-50%) scale(1.15) rotate(2deg);opacity:1;}
+            80%{transform:translate(-50%,-50%) scale(0.95) rotate(-1deg);}
+            100%{transform:translate(-50%,-50%) scale(1) rotate(0);opacity:1;}
+        }
+        .msg-show{ display:block!important; animation:popIn .5s cubic-bezier(0.175,0.885,0.32,1.275) forwards; }
+        /* Figure Four HUD bar */
+        #figure-four-bar{
+            position:absolute; bottom:8px; left:50%; transform:translateX(-50%);
+            z-index:35; display:none; flex-direction:column; align-items:center; gap:3px;
+        }
+        #ff-label{ font-size:8px; color:#9933ff; text-shadow:0 0 8px #9933ff; letter-spacing:2px; }
+        #ff-track{ width:140px; height:8px; background:#111; border:1px solid #9933ff; }
+        #ff-fill{ height:100%; background:linear-gradient(90deg,#9933ff,#cc66ff); width:100%; transition:width .3s; }
+        /* Hit flash */
+        #hit-flash{ position:absolute; inset:0; pointer-events:none; z-index:25; opacity:0; }
+        @keyframes flashAnim{ 0%{opacity:.65;} 100%{opacity:0;} }
+        .flash-p1{ background:rgba(0,207,255,.2); animation:flashAnim .15s ease-out forwards; }
+        .flash-p2{ background:rgba(255,68,68,.2); animation:flashAnim .15s ease-out forwards; }
+        /* Combo */
+        #combo-display{ position:absolute; top:18%; left:50%; transform:translateX(-50%); z-index:35; text-align:center; pointer-events:none; display:none; }
+        #combo-count{ font-size:30px; color:var(--gold); text-shadow:0 0 20px var(--gold),3px 3px 0 #000; }
+        #combo-label{ font-size:7px; color:#fff; letter-spacing:2px; }
+        /* Win dots */
+        #win-indicators{ position:absolute; top:8px; left:50%; transform:translateX(-50%); display:flex; gap:5px; z-index:15; }
+        .win-dot{ width:8px; height:8px; border-radius:50%; border:1px solid #333; background:#222; }
+        .win-dot.p1{ background:var(--p1); box-shadow:0 0 6px var(--p1); }
+        .win-dot.p2{ background:var(--p2); box-shadow:0 0 6px var(--p2); }
+        /* Retry */
+        #retry-btn{
+            position:absolute; bottom:28%; left:50%; transform:translateX(-50%);
+            z-index:50; background:var(--gold); color:#000;
+            font-family:'Press Start 2P',monospace; font-size:11px;
+            padding:12px 24px; border:3px solid #fff; cursor:pointer;
+            display:none; letter-spacing:1px; box-shadow:4px 4px 0 #000;
+            animation:retryPop .4s cubic-bezier(0.175,0.885,0.32,1.275);
+        }
+        @keyframes retryPop{ from{transform:translateX(-50%) scale(0);} to{transform:translateX(-50%) scale(1);} }
+        #retry-btn:active{ transform:translateX(-50%) scale(0.95); }
+        /* Bottom UI */
+        #bottom-ui{
+            height:108px; background:linear-gradient(0deg,#060606 0%,#0e0e14 100%);
+            border-top:2px solid #1a1a2e; display:flex; align-items:center;
+            justify-content:center; gap:8px; padding:6px 8px;
+            position:relative; z-index:20; flex-shrink:0;
+        }
+        #system-log{
+            position:absolute; top:4px; width:100%; text-align:center;
+            font-size:7px; color:var(--gold); text-shadow:0 0 8px var(--gold);
+            letter-spacing:.5px; pointer-events:none; line-height:1.4;
+        }
+        .face-frame{
+            width:80px; height:80px; border:2px solid #222; background:#0a0a0f;
+            overflow:hidden; position:relative; flex-shrink:0; margin-top:14px;
+        }
+        #face-frame-1{ box-shadow:0 0 12px rgba(0,207,255,.25); }
+        #face-frame-2{ box-shadow:0 0 12px rgba(255,68,68,.25); }
+        /* SP Button (enlarged) */
+        #sp-panel{
+            flex:1; display:flex; flex-direction:column; gap:4px; margin-top:14px; height:72px;
+        }
+        #ctrl-hint{
+            font-size:5.5px; color:#2a2a3a; text-align:center; letter-spacing:.3px; line-height:1.5;
+        }
+        #btn-sp{
+            flex:1; background:linear-gradient(180deg,#001122,#000a14);
+            border:2px solid #00cfff22; color:#00cfff44;
+            font-family:'Press Start 2P',monospace; font-size:12px;
+            cursor:pointer; letter-spacing:1px; transition:all .1s;
+            display:flex; align-items:center; justify-content:center; gap:6px;
+        }
+        #btn-sp.sp-ready{
+            background:linear-gradient(180deg,#002244,#001133);
+            border-color:var(--p1); color:var(--p1);
+            box-shadow:0 0 16px rgba(0,207,255,.5),inset 0 0 10px rgba(0,207,255,.1);
+            animation:spBtnPulse .8s infinite;
+        }
+        @keyframes spBtnPulse{ 50%{box-shadow:0 0 28px rgba(0,207,255,.8),0 0 6px #fff;} }
+        /* Grab prompt */
+        #grab-prompt{
+            position:absolute; bottom:12px; left:50%; transform:translateX(-50%);
+            z-index:36; display:none; text-align:center; pointer-events:none;
+        }
+        #grab-prompt-inner{
+            font-size:8px; color:#ff9900; text-shadow:0 0 10px #ff9900;
+            border:1px solid #ff9900; padding:6px 12px; background:rgba(0,0,0,.7);
+            animation:grabPulse .6s infinite;
+        }
+        @keyframes grabPulse{ 50%{opacity:.6;} }
+        /* START */
+        #start-init-btn{
+            position:absolute; inset:0; background:rgba(0,0,0,.93);
+            display:flex; flex-direction:column; align-items:center; justify-content:center;
+            gap:8px; z-index:50; cursor:pointer; border:none; color:#fff;
+            font-family:'Press Start 2P',monospace;
+        }
+        #start-init-btn .title{ font-size:22px; color:var(--gold); text-shadow:0 0 20px var(--gold),4px 4px 0 #aa8800; animation:titlePulse 1.5s infinite; }
+        #start-init-btn .subtitle{ font-size:9px; color:#666; letter-spacing:2px; }
+        @keyframes titlePulse{ 0%,100%{transform:scale(1);} 50%{transform:scale(1.04);} }
+        #start-init-btn .tap-hint{ font-size:10px; color:#fff; border:2px solid #fff; padding:8px 20px; animation:blinkHint 1s infinite; }
+        @keyframes blinkHint{ 50%{opacity:.3;} }
+        #start-init-btn .ctrl-info{ font-size:5.5px; color:#444; letter-spacing:.5px; line-height:2; text-align:center; }
+
+    /* ===== ONLINE MODAL ===== */
+    #online-modal{
+        position:absolute; inset:0; background:rgba(0,0,0,.96);
+        z-index:60; display:none; flex-direction:column;
+        align-items:center; justify-content:center; gap:14px;
+        font-family:'Press Start 2P',monospace;
+    }
+    #online-modal.show{ display:flex; }
+    .om-title{ font-size:14px; color:var(--gold); text-shadow:0 0 16px var(--gold); }
+    .om-sub{ font-size:8px; color:#555; letter-spacing:1px; }
+    .om-row{ display:flex; gap:8px; }
+    .om-btn{
+        padding:10px 18px; font-family:'Press Start 2P',monospace; font-size:9px;
+        border:2px solid #444; background:#111; color:#aaa; cursor:pointer;
+        transition:all .12s;
+    }
+    .om-btn:active{ transform:scale(.95); }
+    .om-btn.host{ border-color:var(--p1); color:var(--p1); }
+    .om-btn.join{ border-color:var(--p2); color:var(--p2); }
+    .om-btn.back{ border-color:#444; color:#666; font-size:7px; }
+    #online-code-area{ display:none; flex-direction:column; align-items:center; gap:10px; }
+    #online-code-box{
+        font-size:22px; color:#fff; letter-spacing:6px;
+        border:3px solid var(--p1); padding:10px 20px;
+        text-shadow:0 0 12px var(--p1); background:#000a14;
+        text-align:center; min-width:200px;
+    }
+    #online-code-hint{ font-size:7px; color:#555; text-align:center; line-height:1.8; }
+    #online-status{
+        font-size:8px; color:var(--gold); text-shadow:0 0 8px var(--gold);
+        text-align:center; line-height:1.8; min-height:20px;
+    }
+    #online-join-area{ display:none; flex-direction:column; align-items:center; gap:10px; }
+    #join-input{
+        font-family:'Press Start 2P',monospace; font-size:18px;
+        background:#000; border:2px solid var(--p2); color:var(--p2);
+        padding:8px 14px; text-align:center; width:220px;
+        letter-spacing:4px; text-transform:uppercase;
+    }
+    #join-input::placeholder{ color:#330000; }
+    #join-go-btn{
+        padding:10px 24px; font-family:'Press Start 2P',monospace; font-size:10px;
+        border:2px solid var(--p2); background:#200; color:var(--p2); cursor:pointer;
+    }
+    /* Online badge in HUD */
+    #online-badge{
+        position:absolute; top:2px; left:50%; transform:translateX(-50%);
+        font-size:6px; color:#00ff88; letter-spacing:1px; display:none;
+        text-shadow:0 0 6px #00ff88;
+    }
+    #ping-display{
+        position:absolute; bottom:2px; right:6px; font-size:6px;
+        color:#333; font-family:'Press Start 2P',monospace; display:none;
+    }
+</style>
+
+</head>
+<body>
+<div id="game-container">
+    <div id="hud">
+        <div class="fighter-hud left">
+            <span class="fighter-name">◀ 1P YOU</span>
+            <div class="hp-wrap"><div id="hp1" class="hp-bar" style="width:100%"></div></div>
+            <div class="sp-wrap"><div id="sp1" class="sp-bar" style="width:0%"></div></div>
+        </div>
+        <div id="hud-center">
+            <div id="round-label">TIME</div>
+            <div id="timer-display">60</div>
+            <div id="online-badge">● ONLINE</div>
+        </div>
+        <div class="fighter-hud right">
+            <span class="fighter-name">CPU ▶</span>
+            <div class="hp-wrap" style="direction:rtl"><div id="hp2" class="hp-bar" style="width:100%"></div></div>
+            <div class="sp-wrap" style="direction:rtl"><div id="sp2" class="sp-bar" style="width:0%"></div></div>
+        </div>
+    </div>
+
+<div id="ring-container">
+    <canvas id="bgCanvas"></canvas>
+    <canvas id="gameCanvas"></canvas>
+    <canvas id="fxCanvas"></canvas>
+    <div id="touch-layer"></div>
+    <div id="hit-flash"></div>
+    <div id="center-message"></div>
+    <div id="combo-display">
+        <div id="combo-count">0</div>
+        <div id="combo-label">HIT COMBO</div>
+    </div>
+    <div id="win-indicators">
+        <div class="win-dot" id="wd-p1-1"></div>
+        <div class="win-dot" id="wd-p1-2"></div>
+        <div style="width:10px"></div>
+        <div class="win-dot" id="wd-p2-1"></div>
+        <div class="win-dot" id="wd-p2-2"></div>
+    </div>
+    <div id="figure-four-bar">
+        <div id="ff-label">⚙ 四の字固め</div>
+        <div id="ff-track"><div id="ff-fill"></div></div>
+    </div>
+    <div id="grab-prompt">
+        <div id="grab-prompt-inner">↑BUSTER ↓四の字 →頭突き ←BACKDROP TAP:THROW</div>
+    </div>
+    <button id="retry-btn">▶ REMATCH</button>
+    <div id="start-init-btn">
+        <div class="title">PRO WRESTLING</div>
+        <div class="subtitle">F U R Y</div>
+        <div style="height:8px"></div>
+        <div class="tap-hint">TAP TO START</div>
+        <div style="height:6px"></div>
+        <button id="online-open-btn" style="font-family:'Press Start 2P',monospace;font-size:9px;padding:8px 18px;border:2px solid #00ff88;background:transparent;color:#00ff88;cursor:pointer;">🌐 ONLINE BATTLE</button>
+        <div style="height:6px"></div>
+        <div class="ctrl-info">
+            左側: 移動スティック<br>
+            右タップ: パンチ（バウンス中→ラリアット）<br>
+            右↑スワイプ: 上段蹴り／右↓スワイプ: 下段蹴り<br>
+            相手に向かってスワイプ: 掴み／逆: ガード<br>
+            掴んでTAP:投げ ↑:バスター ↓:四の字<br>
+            掴んで→:頭突き ←:バックドロップ
+        </div>
+    </div>
+
+    <!-- ONLINE MODAL -->
+    <div id="online-modal">
+        <div class="om-title">🌐 ONLINE BATTLE</div>
+        <div id="online-status">接続方法を選んでください</div>
+
+        <!-- Top menu -->
+        <div class="om-row" id="online-menu">
+            <button class="om-btn host" id="btn-host">📡 HOST</button>
+            <button class="om-btn join" id="btn-join">🔗 JOIN</button>
+        </div>
+
+        <!-- Host: show code -->
+        <div id="online-code-area">
+            <div class="om-sub">相手にこのコードを教えてください</div>
+            <div id="online-code-box">------</div>
+            <div id="online-code-hint">コードを共有して相手が接続するのを待つ<br>接続されたら自動で試合開始！</div>
+        </div>
+
+        <!-- Join: input code -->
+        <div id="online-join-area">
+            <div class="om-sub">相手のコードを入力してください</div>
+            <input id="join-input" type="text" maxlength="6" placeholder="XXXXXX" autocomplete="off" autocorrect="off" spellcheck="false">
+            <button id="join-go-btn">接続する</button>
+        </div>
+
+        <button class="om-btn back" id="online-back-btn">◀ 戻る</button>
+    </div>
+</div>
+
+<div id="bottom-ui">
+    <div id="system-log"></div>
+    <div id="ping-display"></div>
+    <div class="face-frame" id="face-frame-1">
+        <canvas id="faceCanvas1" width="80" height="80" style="width:100%;height:100%"></canvas>
+    </div>
+    <div id="sp-panel">
+        <div id="ctrl-hint">TAP:パンチ　↑:上段蹴り　↓:下段蹴り<br>→相手:掴み　→逆:ガード　バウンス:ラリアット</div>
+        <div id="btn-sp">⚡ SP ATTACK</div>
+    </div>
+    <div class="face-frame" id="face-frame-2">
+        <canvas id="faceCanvas2" width="80" height="80" style="width:100%;height:100%"></canvas>
+    </div>
+</div>
+
+</div>
+
+<script>
+// =============================================
+//  SOUND ENGINE
+// =============================================
+const SoundBox = (() => {
+    let ctx = null, ready = false;
+    function init() {
+        if (!ready) { ctx = new (window.AudioContext || window.webkitAudioContext)(); ready = true; }
+        if (ctx.state === 'suspended') ctx.resume();
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        g.gain.value = 0; o.connect(g); g.connect(ctx.destination); o.start(0); o.stop(0.01);
+    }
+    function gong() {
+        if (!ready) return;
+        const t = ctx.currentTime;
+        [350,520,780,1040,1500,2100].forEach((f,i) => {
+            const o = ctx.createOscillator(), g = ctx.createGain();
+            o.type='sine'; o.frequency.value=f;
+            const v=0.5/(i+1), d=2.2+(5-i)*0.3;
+            g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(v,t+0.02); g.gain.exponentialRampToValueAtTime(0.001,t+d);
+            o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t+d+0.1);
+        });
+    }
+    function punch(heavy=false) {
+        if (!ready) return;
+        const t = ctx.currentTime;
+        const o=ctx.createOscillator(), go=ctx.createGain();
+        o.type='sine'; o.frequency.setValueAtTime(heavy?80:150,t); o.frequency.exponentialRampToValueAtTime(20,t+(heavy?.3:.1));
+        go.gain.setValueAtTime(heavy?1:.8,t); go.gain.exponentialRampToValueAtTime(0.01,t+(heavy?.35:.12));
+        o.connect(go); go.connect(ctx.destination); o.start(t); o.stop(t+.45);
+        const bsz=ctx.sampleRate*(heavy?.4:.15), buf=ctx.createBuffer(1,bsz,ctx.sampleRate), d=buf.getChannelData(0);
+        for(let i=0;i<bsz;i++) d[i]=Math.random()*2-1;
+        const ns=ctx.createBufferSource(); ns.buffer=buf;
+        const flt=ctx.createBiquadFilter(); flt.type='lowpass'; flt.frequency.setValueAtTime(heavy?1200:2500,t); flt.frequency.linearRampToValueAtTime(200,t+.2);
+        const gn=ctx.createGain(); gn.gain.setValueAtTime(heavy?1:.7,t); gn.gain.exponentialRampToValueAtTime(0.01,t+(heavy?.4:.15));
+        ns.connect(flt); flt.connect(gn); gn.connect(ctx.destination); ns.start(t);
+    }
+    function tone(freq,type,dur,vol,fe=0) {
+        if (!ready) return;
+        const t=ctx.currentTime, o=ctx.createOscillator(), g=ctx.createGain();
+        o.type=type; o.frequency.setValueAtTime(freq,t);
+        if(fe>0) o.frequency.exponentialRampToValueAtTime(fe,t+dur);
+        g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.01,t+dur);
+        o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t+dur+.05);
+    }
+    function crowd() {
+        if (!ready) return;
+        const t=ctx.currentTime, buf=ctx.createBuffer(1,ctx.sampleRate*.8,ctx.sampleRate), d=buf.getChannelData(0);
+        for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.exp(-i/d.length*3);
+        const ns=ctx.createBufferSource(); ns.buffer=buf;
+        const flt=ctx.createBiquadFilter(); flt.type='bandpass'; flt.frequency.value=800; flt.Q.value=.5;
+        const g=ctx.createGain(); g.gain.value=.12;
+        ns.connect(flt); flt.connect(g); g.connect(ctx.destination); ns.start(t);
+    }
+    return {
+        init, gongStart:()=>gong(),
+        gongEnd:()=>{gong();setTimeout(gong,350);setTimeout(gong,700);},
+        hit:()=>punch(false), spHit:()=>punch(true),
+        guard:()=>{tone(1400,'square',.15,.12,2800);tone(2200,'sine',.3,.15);},
+        spAura:()=>{tone(180,'sawtooth',1,.12,900);setTimeout(()=>tone(350,'square',.7,.1,1200),80);},
+        bounce:()=>{tone(380,'sine',.25,.18,180);setTimeout(()=>tone(280,'sine',.3,.18,500),40);},
+        ko:()=>{punch(true);setTimeout(()=>tone(100,'sawtooth',.5,.3,40),200);},
+        levelUp:()=>{[440,550,660,880].forEach((f,i)=>setTimeout(()=>tone(f,'square',.2,.15),i*80));},
+        crowd, timerWarn:()=>tone(880,'square',.1,.1),
+        grab:()=>{tone(600,'square',.1,.15,400);},
+        figFour:()=>{tone(150,'sawtooth',.6,.12,80);setTimeout(()=>tone(120,'sine',.4,.1),200);},
+        ropeThrow:()=>{tone(300,'sine',.2,.2,600);}
+    };
+})();
+
+// =============================================
+//  CANVAS / DOM
+// =============================================
+const canvas    = document.getElementById('gameCanvas');
+const ctx       = canvas.getContext('2d');
+const bgCanvas  = document.getElementById('bgCanvas');
+const bgCtx     = bgCanvas.getContext('2d');
+const fxCanvas  = document.getElementById('fxCanvas');
+const fxCtx     = fxCanvas.getContext('2d');
+const hp1El=document.getElementById('hp1'); const hp2El=document.getElementById('hp2');
+const sp1El=document.getElementById('sp1'); const sp2El=document.getElementById('sp2');
+const centerMsg   =document.getElementById('center-message');
+const retryBtn    =document.getElementById('retry-btn');
+const faceCanvas1 =document.getElementById('faceCanvas1');
+const faceCanvas2 =document.getElementById('faceCanvas2');
+const startInitBtn=document.getElementById('start-init-btn');
+const systemLog   =document.getElementById('system-log');
+const touchLayer  =document.getElementById('touch-layer');
+const timerDisplay=document.getElementById('timer-display');
+const comboDisplay=document.getElementById('combo-display');
+const comboCountEl=document.getElementById('combo-count');
+const hitFlash    =document.getElementById('hit-flash');
+const btnSp       =document.getElementById('btn-sp');
+const grabPrompt  =document.getElementById('grab-prompt');
+const ffBar       =document.getElementById('figure-four-bar');
+const ffFill      =document.getElementById('ff-fill');
+
+const ring={cx:0,cy:0,rw:0,rh:0,depth:55};
+const pts={top:{x:0,y:0},bottom:{x:0,y:0},left:{x:0,y:0},right:{x:0,y:0}};
+
+let gameState='wait_for_start';
+let popups=[], particles=[], frameCount=0;
+let matchTimer=60, timerTick=0;
+let comboTimer=0, currentCombo=0;
+let figureFourActive=false, figureFourTimer=0, figFourTapFrames=[];
+const FF_MAX_TICKS = 60; // rope break threshold in ticks
+const wins={p1:0,p2:0};
+
+// =============================================
+//  ONLINE (PeerJS WebRTC P2P - v7)
+// =============================================
+let onlineMode   = false;
+let isP2         = false;
+let peer         = null;   // 自分のPeerオブジェクト
+let conn         = null;   // DataConnection
+let netReady     = false;
+let remoteMove   = {dx:0, dy:0};
+let pingInterval = null;
+let pingMs       = 0;
+let _pingTs      = 0;
+
+// DOM
+const onlineModal    = document.getElementById('online-modal');
+const onlineBadge    = document.getElementById('online-badge');
+const pingDisplay    = document.getElementById('ping-display');
+const onlineStatus   = document.getElementById('online-status');
+const onlineCodeBox  = document.getElementById('online-code-box');
+const onlineCodeArea = document.getElementById('online-code-area');
+const onlineJoinArea = document.getElementById('online-join-area');
+const onlineMenu     = document.getElementById('online-menu');
+const joinInput      = document.getElementById('join-input');
+
+// HOST=player(青/左)、GUEST=cpu(赤/右)
+function myFighter() { return isP2 ? cpu    : player; }
+function oppFighter(){ return isP2 ? player : cpu;    }
+
+// ネット送信
+function netSend(data){
+    if(!conn || !netReady) return;
+    try { conn.send(data); } catch(e){}
+}
+
+// 受信メッセージ処理
+function onNetMsg(data){
+    if(!data || !data.t) return;
+    switch(data.t){
+        case 'move':
+            remoteMove.dx = data.dx||0;
+            remoteMove.dy = data.dy||0;
+            break;
+        case 'action':
+            if(data.a) oppFighter().doAction(data.a);
+            break;
+        case 'sp':
+            oppFighter().enterSpMode();
+            break;
+        case 'grab':
+            netAttemptGrab();
+            break;
+        case 'grab_move':
+            if(data.move) executeGrabMove(data.move, true);
+            break;
+        case 'guard':
+            oppFighter().doAction('guard');
+            break;
+        case 'ff_tap':
+            figFourTapFrames.push(frameCount);
+            figFourTapFrames = figFourTapFrames.filter(f=>frameCount-f<120);
+            break;
+        case 'start':
+            // ゲスト側：start受信でゲーム開始
+            if(!netReady){
+                netReady = true;
+                onlineMode = true;
+                activateOnlineUI();
+                SoundBox.init();
+                setTimeout(startGameSequence, 100);
+            }
+            break;
+        case 'ping':
+            netSend({t:'pong', ts: data.ts});
+            break;
+        case 'pong':
+            if(data.ts){
+                pingMs = Date.now() - data.ts;
+                pingDisplay.textContent = `PING:${pingMs}ms`;
+            }
+            break;
+        case 'rematch':
+            startGameSequence();
+            break;
+
+        case 'sync': {
+            // 相手キャラの状態を受け取り、自分側の oppFighter に適用
+            const opp = oppFighter();
+            // 位置・速度（大きなズレのみ補正・小さなズレは補間）
+            const dx = data.x - opp.x, dy = data.y - opp.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if(dist > 40){
+                // 大きなズレ → 即座に合わせる
+                opp.x = data.x; opp.y = data.y;
+            } else if(dist > 8){
+                // 小さなズレ → 補間（ラバーバンド）
+                opp.x += dx * 0.25; opp.y += dy * 0.25;
+            }
+            // HP・SP（権威値で上書き）
+            if(data.hp !== undefined){
+                opp.hp = Math.max(0, Math.min(opp.maxHp, data.hp));
+                opp.sp = Math.max(0, Math.min(opp.maxSp, data.sp||0));
+                opp.updateUI();
+            }
+            // facing（向き）
+            if(data.facing) opp.facing = data.facing;
+            break;
+        }
+
+        case 'ko':
+            // 相手側でKO判定が出た → こちらも同じ結末を適用
+            if(gameState === 'playing' || gameState === 'ready'){
+                gameState = 'ko';
+                // HPを強制的に0にして視覚を合わせる
+                if(data.loser === 'me'){
+                    // 送信者の自分がloser → こちら側では oppFighter がloser
+                    oppFighter().hp = 0; oppFighter().state = 'dead'; oppFighter().updateUI();
+                } else {
+                    myFighter().hp = 0; myFighter().state = 'dead'; myFighter().updateUI();
+                }
+                handleMatchEnd(data.msg, data.color, data.log);
+            }
+            break;
+    }
+}
+
+// 相手のグラブを受けた処理
+function netAttemptGrab(){
+    const me = myFighter(), opp = oppFighter();
+    if(me.hp<=0 || me.isRingOut) return;
+    if(['grabbing','grabbed','hit','dead','brain_buster_def','backdrop_def','headbutt_def'].includes(me.state)) return;
+    const dx = me.x - opp.x, dy = me.y - opp.y;
+    const dist = Math.sqrt(dx*dx+dy*dy);
+    if(dist < 130){
+        opp.state='grabbing'; opp.stateTimer=0; opp.vx=0; opp.vy=0; opp.hasHit=false;
+        me.state='grabbed';   me.stateTimer=0;  me.vx=0; me.vy=0;
+        opp.facing = dx < 0 ? 1 : -1;
+        grabPrompt.style.display='block';
+        addPopup(opp.x, opp.y-45,'GRAB!!','#ff9900',1.4);
+        SoundBox.grab();
+        showSystemLog('🤼 掴まれた！','#ff9900');
+    }
+}
+
+function activateOnlineUI(){
+    onlineBadge.style.display = 'block';
+    pingDisplay.style.display = 'block';
+    onlineModal.classList.remove('show');
+    startInitBtn.style.display = 'none';
+    if(pingInterval) clearInterval(pingInterval);
+    pingInterval = setInterval(()=>{
+        if(netReady && onlineMode) netSend({t:'ping', ts:Date.now()});
+    }, 3000);
+}
+
+function destroyPeer(){
+    if(pingInterval){ clearInterval(pingInterval); pingInterval=null; }
+    if(conn){ try{ conn.close(); }catch(e){} conn=null; }
+    if(peer){ try{ peer.destroy(); }catch(e){} peer=null; }
+    netReady=false; onlineMode=false;
+}
+
+// HOST：PeerJSでIDを取得し、そのIDをルームコードとして相手に渡す
+function startHost(){
+    destroyPeer();
+    isP2 = false;
+    setOnlineStatus('⏳ サーバーに接続中...');
+    onlineCodeArea.style.display = 'flex';
+    onlineMenu.style.display = 'none';
+    onlineCodeBox.textContent = '......';
+
+    // 6文字ランダムIDをカスタムPeer IDとして使用（'pwf-' + 6文字）
+    const roomCode = Math.random().toString(36).slice(2,8).toUpperCase();
+    const peerId   = 'pwf-' + roomCode;
+
+    peer = new Peer(peerId, {
+        debug: 0,
+        config: {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        }
+    });
+
+    peer.on('open', () => {
+        // 6文字コードだけ表示（GUESTはこれを入力する）
+        onlineCodeBox.textContent = roomCode;
+        onlineCodeBox.style.fontSize = '22px';
+        onlineCodeBox.style.letterSpacing = '6px';
+        setOnlineStatus('⏳ 相手の接続を待っています...');
+        showSystemLog('📡 コードを相手に送ってください', '#00ff88');
+    });
+
+    peer.on('connection', (c) => {
+        conn = c;
+        setupConn();
+        setOnlineStatus('✅ 相手が接続！試合開始します...');
+        conn.on('open', ()=>{
+            netReady = true;
+            onlineMode = true;
+            activateOnlineUI();
+            SoundBox.init();
+            setTimeout(()=>{
+                netSend({t:'start'});
+                setTimeout(startGameSequence, 200);
+            }, 300);
+        });
+    });
+
+    peer.on('error', (err) => {
+        setOnlineStatus('❌ 接続エラー: ' + err.type);
+        console.error('PeerJS HOST error:', err);
+    });
+}
+
+// GUEST：ホストのPeer IDに接続
+function startJoin(code){
+    destroyPeer();
+    isP2 = true;
+    // PeerJSのIDは大文字小文字を区別するのでtrimだけ
+    code = code.trim();
+    setOnlineStatus('⏳ ホストに接続中...');
+
+    peer = new Peer(undefined, {
+        debug: 0,
+        config: {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        }
+    });
+
+    peer.on('open', () => {
+        // 入力6文字コードに'pwf-'を付けてホストのPeer IDを復元
+        const inputCode = joinInput.value.trim().toUpperCase();
+        const hostId = 'pwf-' + inputCode;
+        conn = peer.connect(hostId, {
+            reliable: true,
+            serialization: 'json'
+        });
+        setupConn();
+        setOnlineStatus('🔗 接続中...');
+
+        conn.on('open', ()=>{
+            setOnlineStatus('🎮 ホストの開始合図を待っています...');
+        });
+    });
+
+    peer.on('error', (err) => {
+        const msg = err.type === 'peer-unavailable'
+            ? '❌ ルームが見つかりません（IDを確認）'
+            : '❌ 接続エラー: ' + err.type;
+        setOnlineStatus(msg);
+        console.error('PeerJS GUEST error:', err);
+    });
+
+    // タイムアウト
+    setTimeout(()=>{
+        if(!netReady) setOnlineStatus('❌ 接続タイムアウト。もう一度お試しください');
+    }, 20000);
+}
+
+function setupConn(){
+    if(!conn) return;
+    conn.on('data', (data) => { onNetMsg(data); });
+    conn.on('close', () => {
+        if(netReady) showSystemLog('⚠️ 接続が切断されました', '#ff4444');
+        netReady = false;
+    });
+    conn.on('error', (e) => { console.error('conn error', e); });
+}
+
+function setOnlineStatus(txt){ onlineStatus.textContent = txt; }
+function closeOnlineModal(){
+    onlineModal.classList.remove('show');
+    onlineCodeArea.style.display='none';
+    onlineJoinArea.style.display='none';
+    onlineMenu.style.display='flex';
+}
+
+// UI イベント
+document.getElementById('online-open-btn').addEventListener('click', e=>{
+    e.stopPropagation(); SoundBox.init();
+    onlineModal.classList.add('show');
+    setOnlineStatus('接続方法を選んでください');
+});
+document.getElementById('btn-host').addEventListener('click', ()=>{ startHost(); });
+document.getElementById('btn-join').addEventListener('click', ()=>{
+    onlineMenu.style.display='none';
+    onlineJoinArea.style.display='flex';
+    setOnlineStatus('ホストのコードを入力してください');
+    joinInput.focus();
+});
+document.getElementById('join-go-btn').addEventListener('click', ()=>{
+    const code = joinInput.value.trim();
+    if(code.length < 4){ setOnlineStatus('コードが短すぎます'); return; }
+    startJoin(code);
+});
+joinInput.addEventListener('keydown', e=>{ if(e.key==='Enter') document.getElementById('join-go-btn').click(); });
+document.getElementById('online-back-btn').addEventListener('click', ()=>{
+    destroyPeer();
+    closeOnlineModal();
+});
+
+
+// =============================================
+//  PARTICLES
+function spawnHitParticles(x,y,color,count=8,big=false){
+    for(let i=0;i<count;i++){
+        const a=(Math.PI*2/count)*i+Math.random()*.5, s=(big?4:2)+Math.random()*(big?4:2);
+        particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-(big?2:1),life:30+Math.random()*20,maxLife:50,color,size:(big?4:2)+Math.random()*2,gravity:.15});
+    }
+}
+function spawnSparkles(x,y,color='#ffd700'){
+    for(let i=0;i<18;i++){
+        const a=Math.random()*Math.PI*2, s=1+Math.random()*5;
+        particles.push({x:x+(Math.random()-.5)*30,y:y+(Math.random()-.5)*20,vx:Math.cos(a)*s,vy:Math.sin(a)*s-3,life:40+Math.random()*30,maxLife:70,color,size:1+Math.random()*3,gravity:.2});
+    }
+}
+function updateParticles(){
+    for(let i=particles.length-1;i>=0;i--){
+        const p=particles[i];
+        p.x+=p.vx; p.y+=p.vy; p.vy+=p.gravity; p.vx*=.96; p.vy*=.98; p.life--;
+        if(p.life<=0) particles.splice(i,1);
+    }
+}
+function drawParticles(){
+    particles.forEach(p=>{
+        const a=p.life/p.maxLife;
+        fxCtx.save(); fxCtx.globalAlpha=a; fxCtx.fillStyle=p.color; fxCtx.shadowColor=p.color; fxCtx.shadowBlur=4;
+        fxCtx.beginPath(); fxCtx.arc(p.x,p.y,p.size*a,0,Math.PI*2); fxCtx.fill(); fxCtx.restore();
+    });
+}
+
+// =============================================
+//  BACKGROUND
+// =============================================
+function drawStaticBackground(){
+    const w=bgCanvas.width, h=bgCanvas.height;
+    bgCtx.clearRect(0,0,w,h);
+    // Deep arena dark
+    bgCtx.fillStyle='#050508'; bgCtx.fillRect(0,0,w,h);
+
+    // Arena floor gradient
+    const floorGrad=bgCtx.createRadialGradient(w/2,h*.6,10,w/2,h*.6,w*.8);
+    floorGrad.addColorStop(0,'rgba(30,22,60,0.5)'); floorGrad.addColorStop(1,'transparent');
+    bgCtx.fillStyle=floorGrad; bgCtx.fillRect(0,0,w,h);
+
+    // Crowd pixels
+    for(let y=0;y<h;y+=12){
+        for(let x=0;x<w;x+=12){
+            const dx=x-ring.cx, dy=y-(ring.cy+ring.depth*0.5);
+            const val=Math.abs(dx)/(ring.rw/2+80)+Math.abs(dy)/(ring.rh/2+55);
+            if(val>1.0&&Math.random()>.12){
+                const hue=Math.floor(Math.random()*360);
+                const lit=18+Math.floor(Math.random()*38);
+                bgCtx.fillStyle=`hsl(${hue},45%,${lit}%)`;
+                bgCtx.fillRect(x-1,y,9,12);
+                if(Math.random()>.45){ bgCtx.fillStyle='#fbbcbc'; bgCtx.fillRect(x+1,y-5,6,6); }
+                if(Math.random()>.86){ bgCtx.fillStyle='rgba(255,240,80,.9)'; bgCtx.fillRect(x-3,y+2,3,3); }
+            }
+        }
+    }
+
+    // Three dramatic spotlights from top
+    const spots=[
+        {x:w*0.25, col:'rgba(0,207,255,0.06)'},
+        {x:w*0.5,  col:'rgba(255,255,200,0.05)'},
+        {x:w*0.75, col:'rgba(255,68,68,0.06)'},
+    ];
+    spots.forEach(s=>{
+        const gr=bgCtx.createRadialGradient(s.x,-20,0,s.x,h*.55,w*.55);
+        gr.addColorStop(0,s.col); gr.addColorStop(1,'transparent');
+        bgCtx.fillStyle=gr; bgCtx.fillRect(0,0,w,h);
+    });
+}
+function drawRingBackground(c){
+    // Side panel (3D depth)
+    const sideGrad=c.createLinearGradient(pts.left.x,pts.left.y+ring.depth,pts.right.x,pts.right.y+ring.depth);
+    sideGrad.addColorStop(0,'#1a0a2e'); sideGrad.addColorStop(0.5,'#2a102a'); sideGrad.addColorStop(1,'#1a0a2e');
+    c.fillStyle=sideGrad;
+    c.beginPath();
+    c.moveTo(pts.left.x,pts.left.y); c.lineTo(pts.bottom.x,pts.bottom.y); c.lineTo(pts.right.x,pts.right.y);
+    c.lineTo(pts.right.x,pts.right.y+ring.depth); c.lineTo(pts.bottom.x,pts.bottom.y+ring.depth); c.lineTo(pts.left.x,pts.left.y+ring.depth);
+    c.fill();
+    // Side ropes
+    [[12,'#dd1111'],[Math.floor(ring.depth/2),'#dd1111'],[ring.depth-12,'#dd1111']].forEach(([off,col])=>{
+        c.strokeStyle=col; c.lineWidth=3;
+        c.beginPath(); c.moveTo(pts.left.x,pts.left.y+off); c.lineTo(pts.bottom.x,pts.bottom.y+off); c.stroke();
+        c.beginPath(); c.moveTo(pts.bottom.x,pts.bottom.y+off); c.lineTo(pts.right.x,pts.right.y+off); c.stroke();
+    });
+
+    // Mat base - rich dark crimson
+    const matGrad=c.createRadialGradient(ring.cx,ring.cy,0,ring.cx,ring.cy,ring.rw*0.7);
+    matGrad.addColorStop(0,'#1e1040'); matGrad.addColorStop(0.6,'#180d38'); matGrad.addColorStop(1,'#100820');
+    c.fillStyle=matGrad;
+    c.beginPath(); c.moveTo(pts.top.x,pts.top.y); c.lineTo(pts.right.x,pts.right.y); c.lineTo(pts.bottom.x,pts.bottom.y); c.lineTo(pts.left.x,pts.left.y); c.fill();
+
+    // Mat grid lines (subtle)
+    c.strokeStyle='rgba(255,255,255,0.04)'; c.lineWidth=1;
+    for(let i=-5;i<=5;i++){
+        const t=i/5;
+        const lx=ring.cx+(ring.rw/2)*t, rx=ring.cx+(ring.rw/2)*t;
+        c.beginPath(); c.moveTo(lx+(pts.top.y-ring.cy)*.4,pts.top.y); c.lineTo(lx+(pts.bottom.y-ring.cy)*.4,pts.bottom.y); c.stroke();
+    }
+
+    // Outer boundary diamond
+    c.strokeStyle='rgba(220,30,30,0.9)'; c.lineWidth=3;
+    c.beginPath();
+    c.moveTo(pts.top.x,pts.top.y); c.lineTo(pts.right.x,pts.right.y);
+    c.lineTo(pts.bottom.x,pts.bottom.y); c.lineTo(pts.left.x,pts.left.y);
+    c.closePath(); c.stroke();
+
+    // Inner white safety diamond
+    const iRw=ring.rw-18, iRh=ring.rh-18;
+    c.strokeStyle='rgba(255,255,255,0.6)'; c.lineWidth=2;
+    c.beginPath();
+    c.moveTo(ring.cx,ring.cy-iRh/2); c.lineTo(ring.cx+iRw/2,ring.cy);
+    c.lineTo(ring.cx,ring.cy+iRh/2); c.lineTo(ring.cx-iRw/2,ring.cy);
+    c.closePath(); c.stroke();
+
+    // Center circle
+    c.strokeStyle='rgba(255,255,255,0.12)'; c.lineWidth=2;
+    c.beginPath(); c.arc(ring.cx,ring.cy,ring.rw*0.12,0,Math.PI*2); c.stroke();
+    c.fillStyle='rgba(180,0,0,0.25)';
+    c.beginPath(); c.arc(ring.cx,ring.cy,ring.rw*0.12,0,Math.PI*2); c.fill();
+
+    // PWF logo text on mat
+    c.save(); c.globalAlpha=.12; c.fillStyle='#fff';
+    c.font=`bold ${Math.round(ring.rw*0.11)}px "Courier New"`;
+    c.textAlign='center'; c.textBaseline='middle'; c.fillText('PWF',ring.cx,ring.cy); c.restore();
+
+    // "PRO WRESTLING FURY" on side panel
+    c.save();
+    c.translate(pts.left.x+ring.rw/4,pts.left.y+ring.rh/4+ring.depth/2);
+    c.rotate(Math.atan2(ring.rh/2,ring.rw/2));
+    c.fillStyle='#cc2222'; c.font='bold 11px "Courier New"';
+    c.textAlign='center'; c.textBaseline='middle';
+    c.fillText('PRO WRESTLING FURY',0,0); c.restore();
+
+    // Turnbuckle posts (back: top, left, right)
+    const pH=56;
+    drawPost(c,pts.top,'#8b6914',pH,false);
+    drawPost(c,pts.left,'#8b6914',pH,false);
+    drawPost(c,pts.right,'#8b6914',pH,false);
+
+    // Back ropes
+    c.lineWidth=2.5;
+    [1,2,3].forEach(i=>{
+        const h=(pH/4)*i; c.strokeStyle=i===2?'#dd1111':'rgba(230,230,230,0.85)';
+        c.beginPath();
+        c.moveTo(pts.left.x,pts.left.y-h); c.lineTo(pts.top.x,pts.top.y-h); c.lineTo(pts.right.x,pts.right.y-h);
+        c.stroke();
+    });
+}
+function drawRingForeground(c){
+    const pH=56;
+    [1,2,3].forEach(i=>{
+        const h=(pH/4)*i; c.strokeStyle=i===2?'#dd1111':'rgba(235,235,235,0.9)'; c.lineWidth=3.5;
+        c.beginPath(); c.moveTo(pts.left.x,pts.left.y-h); c.lineTo(pts.bottom.x,pts.bottom.y-h); c.lineTo(pts.right.x,pts.right.y-h); c.stroke();
+    });
+    drawPost(c,pts.bottom,'#8b6914',pH,true);
+}
+function drawPost(c,p,color,h,hi){
+    // Post shaft
+    c.fillStyle=color; c.fillRect(p.x-5,p.y-h,10,h);
+    // Highlight
+    c.fillStyle=hi?'rgba(255,255,255,.2)':'rgba(0,0,0,.4)';
+    c.fillRect(hi?p.x-5:p.x+2,p.y-h,4,h);
+    // Turnbuckle pad
+    c.fillStyle=hi?'#cc2222':'#992222';
+    c.fillRect(p.x-7,p.y-h-4,14,12);
+    // Top cap
+    c.fillStyle='#ccc';
+    c.beginPath(); c.arc(p.x,p.y-h,5,0,Math.PI*2); c.fill();
+    c.fillStyle='#fff'; c.beginPath(); c.arc(p.x-1,p.y-h-1,2,0,Math.PI*2); c.fill();
+}
+
+// =============================================
+//  FIGHTER
+// =============================================
+class Fighter {
+    constructor(maskColor, pantsColor, isPlayer){
+        this.maskColor=maskColor; this.pantsColor=pantsColor;
+        this.skinColor='#fca5a5'; this.isPlayer=isPlayer;
+        this.width=30; this.height=60;
+        this.vx=0; this.vy=0; this.speed=3.5;
+        this.maxHp=100; this.hp=100; this.maxSp=100; this.sp=0;
+        this.facing=isPlayer?1:-1; this.state='idle'; this.stateTimer=0;
+        this.hasHit=false; this.isSpMode=false; this.lastHitBySp=false;
+        this.isRingOut=false; this.ringOutDir='';
+        this.isBouncing=false; this.bounceAttack=false;
+        this.headY=-20; this.armRX=10; this.armRY=0; this.armLX=-10; this.armLY=0;
+        this.legRX=5; this.legRY=25; this.legLX=-5; this.legLY=25;
+        this.x=0; this.y=0;
+        this.skipBoundary=false; // used during figure four / brain buster
+    }
+    reset(){
+        this.x=this.isPlayer?ring.cx-ring.rw/4:ring.cx+ring.rw/4;
+        this.y=ring.cy; this.hp=this.maxHp; this.sp=0;
+        this.state='idle'; this.isSpMode=false;
+        this.facing=this.isPlayer?1:-1; this.isRingOut=false; this.ringOutDir='';
+        this.vx=0; this.vy=0; this.isBouncing=false; this.bounceAttack=false;
+        this.skipBoundary=false; this.updateUI();
+    }
+    addSp(amount){
+        if(this.isSpMode||this.hp<=0||this.isRingOut) return;
+        this.sp=Math.min(this.maxSp,this.sp+amount); this.updateUI();
+        if(this.sp>=this.maxSp&&this.isPlayer){ showSystemLog('⚡ SP MAX！SPボタンで必殺技！','#00cfff'); SoundBox.levelUp(); }
+    }
+    enterSpMode(){
+        if(this.sp>=this.maxSp&&!this.isSpMode&&this.hp>0&&!this.isRingOut){
+            this.isSpMode=true; this.state='powerup'; this.stateTimer=0; this.vx=0; this.vy=0;
+            addPopup(this.x,this.y-60,'SP MODE!!','#ffd700',1.8);
+            spawnSparkles(this.x,this.y); SoundBox.spAura();
+            if(this.isPlayer) showSystemLog('🔥 SP MODE！次の攻撃が必殺技に！');
+        }
+    }
+    getActionCategory(s){
+        if(s.includes('jab')) return 'tap';
+        if(s.includes('hook')) return 'horizontal';
+        if(s.includes('kick')) return 'vertical';
+        return null;
+    }
+    doAction(action){
+        const blocked=['hit','powerup','dead','grabbing','brain_buster_atk','rope_throw_atk','figure_four_atk','headbutt_atk','backdrop_atk'];
+        if(blocked.includes(this.state)||this.isRingOut) return;
+
+        if(action==='guard'){
+            if(['idle','walk','powerup'].includes(this.state)){
+                this.state='guard'; this.stateTimer=0; this.vx=0; this.vy=0;
+                addPopup(this.x,this.y-35,'GUARD','#00ff88',1.1);
+            }
+            return;
+        }
+        if(action==='lariat'){
+            this.bounceAttack=true; this.isBouncing=false;
+            this.state='lariat'; this.stateTimer=0; this.hasHit=false;
+            if(this.isPlayer&&cpu) this.facing=this.x<cpu.x?1:-1;
+            return;
+        }
+        if(this.isBouncing){ this.bounceAttack=true; this.isBouncing=false; }
+        let final=action;
+        if(this.isSpMode){
+            final='sp_'+action; this.isSpMode=false; this.sp=0; this.updateUI();
+            btnSp.classList.remove('sp-ready');
+        }
+        this.state=final; this.stateTimer=0; this.hasHit=false;
+        if(this.isPlayer&&cpu&&cpu.hp>0&&!cpu.isRingOut) this.facing=this.x<cpu.x?1:-1;
+    }
+    takeDamage(amount,kbX,kbY=0,isSp=false){
+        if(this.isRingOut) return;
+        // Guard absorbs most damage
+        if(this.state==='guard'){
+            const blocked=Math.floor(amount*.15);
+            this.hp=Math.max(0,this.hp-blocked); this.addSp(35);
+            addPopup(this.x,this.y-40,'GUARDED!','#00ff88',1.2);
+            SoundBox.guard(); this.updateUI();
+            this.x-=kbX*4;
+            return;
+        }
+        this.lastHitBySp=isSp; this.isBouncing=false; this.bounceAttack=false;
+        this.hp=Math.max(0,this.hp-amount); this.stateTimer=0; this.hasHit=true;
+        if(this.hp<=0){ this.state='dead'; this.vx=kbX*4; this.vy=kbY*3; }
+        else          { this.state='hit';  this.vx=kbX*7; this.vy=kbY*5; }
+        this.addSp(amount*3.0); this.updateUI(); // SP増加率UP（ダメージ減少の補正）
+        triggerHitFlash(this.isPlayer?'p2':'p1');
+    }
+    updateUI(){
+        const hpBar=this.isPlayer?hp1El:hp2El, spBar=this.isPlayer?sp1El:sp2El;
+        hpBar.style.width=`${(this.hp/this.maxHp)*100}%`;
+        spBar.style.width=`${(this.sp/this.maxSp)*100}%`;
+        const r=this.hp/this.maxHp;
+        if(this.isPlayer) hpBar.style.background=r<.25?'linear-gradient(90deg,#ff0000,#ff5500)':r<.5?'linear-gradient(90deg,#ff5500,#ffaa00)':'linear-gradient(90deg,#ff6b00,#ffd700)';
+        if(this.sp>=this.maxSp&&this.hp>0&&!this.isRingOut){ spBar.classList.add('sp-max'); if(this.isPlayer) btnSp.classList.add('sp-ready'); }
+        else{ spBar.classList.remove('sp-max'); if(this.isPlayer) btnSp.classList.remove('sp-ready'); }
+    }
+    update(){
+        this.stateTimer++;
+        const end=()=>{ this.state='idle'; this.bounceAttack=false; };
+        this.skipBoundary=false;
+
+        switch(this.state){
+            case 'dead':
+                this.vx*=.82; this.vy*=.82;
+                if(Math.abs(this.vx)<.1) this.vx=0; if(Math.abs(this.vy)<.1) this.vy=0;
+                break;
+            case 'idle':
+                this.headY=-20+Math.sin(Date.now()/220)*2;
+                this.armRX=12*this.facing; this.armRY=5; this.armLX=-12*this.facing; this.armLY=5;
+                this.legRX=8*this.facing; this.legRY=25; this.legLX=-8*this.facing; this.legLY=25;
+                break;
+            case 'walk':{
+                this.headY=-20+Math.abs(Math.sin(this.stateTimer*.2))*3;
+                const sw=Math.sin(this.stateTimer*(this.isBouncing?.6:.3))*10;
+                this.armRX=(10+sw)*this.facing; this.armLX=(-10-sw)*this.facing;
+                this.legRX=(5-sw)*this.facing; this.legLX=(-5+sw)*this.facing;
+                break;
+            }
+            case 'powerup':
+                this.headY=-28; this.armRY=-18+Math.random()*6; this.armLY=-18+Math.random()*6;
+                if(this.stateTimer>24) this.state='idle';
+                break;
+            case 'guard':
+                // Arms crossed in front
+                this.armRX=5*this.facing; this.armRY=-18; this.armLX=2*this.facing; this.armLY=-12;
+                this.headY=-22;
+                if(this.stateTimer>38) end();
+                break;
+            case 'jab':
+                if(this.stateTimer<3) this.armRX=10*this.facing;
+                else if(this.stateTimer<8){ this.armRX=28*this.facing; this.armRY=-5; }
+                else this.armRX=10*this.facing;
+                if(this.stateTimer>14) end();
+                break;
+            case 'hook': // low kick
+                if(this.stateTimer<5){ this.legRX=5*this.facing; this.legRY=25; }
+                else if(this.stateTimer<16){ this.legRX=30*this.facing; this.legRY=38; this.headY=-14; }
+                else{ this.legRX=5*this.facing; this.legRY=25; }
+                if(this.stateTimer>24) end();
+                break;
+            case 'kick': // high kick
+                if(this.stateTimer<7){ this.legRX=5*this.facing; this.legRY=20; }
+                else if(this.stateTimer<20){ this.legRX=36*this.facing; this.legRY=-28; this.headY=-13; }
+                else{ this.legRX=5*this.facing; this.legRY=25; }
+                if(this.stateTimer>30) end();
+                break;
+            case 'lariat':
+                if(this.stateTimer<5){ this.armRX=-8*this.facing; this.armRY=5; }
+                else if(this.stateTimer<18){ this.armRX=36*this.facing; this.armRY=-8; this.headY=-18; }
+                else{ this.armRX=10*this.facing; }
+                if(this.stateTimer>25) end();
+                break;
+            case 'sp_jab':
+                if(this.stateTimer<30){ this.armRX=(22+Math.random()*16)*this.facing; this.armRY=-12+Math.random()*24; }
+                if(this.stateTimer>38) end();
+                break;
+            case 'sp_hook': // SP low kick
+                if(this.stateTimer<10){ this.legRX=5*this.facing; this.legRY=25; }
+                else if(this.stateTimer<28){ this.legRX=36*this.facing; this.legRY=42; this.headY=-10; }
+                else{ this.legRX=5*this.facing; this.legRY=25; }
+                if(this.stateTimer>38) end();
+                break;
+            case 'sp_kick': // SP high kick
+                if(this.stateTimer<10){ this.y-=2.5; this.legRY=8; this.legLY=8; }
+                else if(this.stateTimer<28){ this.legRX=42*this.facing; this.legLX=32*this.facing; this.legRY=-8; this.legLY=-8; this.x+=3*this.facing; }
+                else{ this.y+=2; }
+                if(this.stateTimer>40) end();
+                break;
+            case 'hit':
+                this.headY=-14; this.armRX=-12*this.facing; this.armRY=-10; this.armLX=-16*this.facing; this.armLY=-6;
+                this.vx*=.8; this.vy*=.8;
+                if(this.stateTimer>22){ end(); this.vx=0; this.vy=0; }
+                break;
+            // 頭突き：攻撃側
+            case 'headbutt_atk':
+                if(this.stateTimer<8){ this.headY=-20; this.armRX=6*this.facing; this.armRY=2; this.armLX=-6*this.facing; this.armLY=2; }
+                else if(this.stateTimer<18){ this.headY=-10; this.x+=2.5*this.facing; }
+                else{ this.headY=-20; }
+                if(this.stateTimer>28) end();
+                break;
+            // 頭突き：被攻撃側
+            case 'headbutt_def':
+                this.skipBoundary=true; this.vx=0; this.vy=0;
+                if(this.stateTimer>18){ this.state='hit'; this.stateTimer=0; this.vx=this.facing===1?-6:6; this.vy=-2; }
+                break;
+            // バックドロップ：攻撃側
+            case 'backdrop_atk':
+                if(this.stateTimer<10){ this.headY=-22; this.armRX=8*this.facing; this.armRY=-20; this.armLX=-8*this.facing; this.armLY=-20; }
+                else if(this.stateTimer<22){ this.y+=1.5; this.armRY=-10; this.armLY=-10; }
+                else{ this.armRX=10*this.facing; this.armLX=-10*this.facing; }
+                if(this.stateTimer>36) end();
+                break;
+            // バックドロップ：被攻撃側
+            case 'backdrop_def':
+                this.skipBoundary=true; this.vx=0; this.vy=0;
+                // Arced upward then slammed
+                if(this.stateTimer<10){ this.x+=(-this.facing)*1.5; this.y-=2; }
+                else if(this.stateTimer<22){ this.y+=4; }
+                if(this.stateTimer>22){ this.state='hit'; this.stateTimer=0; this.vy=4; this.vx=(-this.facing)*2; }
+                break;
+            case 'grabbing':
+                this.vx=0; this.vy=0;
+                // Grappling animation
+                this.armRX=(12+Math.sin(this.stateTimer*.3)*6)*this.facing; this.armRY=-12;
+                this.armLX=(-8+Math.sin(this.stateTimer*.3+1)*4)*this.facing; this.armLY=-8;
+                this.headY=-22;
+                if(this.stateTimer>100){
+                    // Timeout - release
+                    this.state='idle';
+                    if(cpu&&!cpu.isRingOut){ cpu.state='idle'; cpu.vx=this.facing*3; }
+                    grabPrompt.style.display='none';
+                    addPopup(this.x,this.y-35,'RELEASED','#888',.9);
+                }
+                break;
+            case 'grabbed':
+                this.vx=0; this.vy=0; this.skipBoundary=true;
+                // Struggle animation
+                this.armRX=(Math.random()-.5)*22; this.armRY=(Math.random()-.5)*12;
+                this.armLX=(Math.random()-.5)*22; this.armLY=(Math.random()-.5)*12;
+                this.headY=-18+(Math.random()-.5)*5;
+                break;
+            case 'rope_throw_atk':
+                this.armRX=22*this.facing; this.armRY=-6; this.armLX=6*this.facing; this.armLY=-4;
+                if(this.stateTimer>20) end();
+                break;
+            case 'rope_thrown':
+                // velocity applied, boundary check special-cased below
+                this.skipBoundary=true;
+                break;
+            case 'brain_buster_atk':
+                if(this.stateTimer<15){ this.armRX=8*this.facing; this.armLX=-8*this.facing; this.armRY=-22; this.armLY=-22; this.headY=-28; }
+                else if(this.stateTimer<28){ this.armRY=-26; this.armLY=-26; }
+                else{ this.armRY=-8; this.armLY=-8; }
+                if(this.stateTimer>42) end();
+                break;
+            case 'brain_buster_def':
+                this.skipBoundary=true; this.vx=0; this.vy=0;
+                if(this.stateTimer>42){ this.state='hit'; this.stateTimer=0; this.vy=5; }
+                break;
+            case 'figure_four_atk':
+                // Sitting, holding opponent legs
+                this.legRX=22*this.facing; this.legRY=18; this.legLX=-22*this.facing; this.legLY=18;
+                this.armRX=14*this.facing; this.armRY=10; this.armLX=-14*this.facing; this.armLY=10;
+                this.headY=-22; this.vx=0; this.vy=0; this.skipBoundary=true;
+                break;
+            case 'figure_four_def':
+                // On back, legs up - CPU can move to escape
+                this.legRX=8*this.facing; this.legRY=-20; this.legLX=-8*this.facing; this.legLY=-20;
+                this.armRX=18*this.facing; this.armRY=10; this.armLX=-18*this.facing; this.armLY=10;
+                this.headY=-10;
+                break;
+        }
+
+        this.x+=this.vx; this.y+=this.vy;
+
+        // Rope_thrown special boundary
+        if(this.state==='rope_thrown'){
+            const dx=this.x-ring.cx, dy=this.y-ring.cy;
+            const val=Math.abs(dx)/(ring.rw/2)+Math.abs(dy)/(ring.rh/2);
+            if(val>0.95){
+                this.x=ring.cx+dx*(0.95/val); this.y=ring.cy+dy*(0.95/val);
+                this.isBouncing=true;
+                this.vx=-this.vx*.85; this.vy=-this.vy*.85;
+                this.state='walk';
+                addPopup(this.x,this.y-35,'BOUNCE!','#00cfff',1.2);
+                SoundBox.bounce();
+            }
+            if(this.stateTimer>80) this.state='idle';
+            return;
+        }
+
+        // Normal boundary
+        if(!this.isRingOut&&!this.skipBoundary){
+            const dx=this.x-ring.cx, dy=this.y-ring.cy;
+            const val=Math.abs(dx)/(ring.rw/2)+Math.abs(dy)/(ring.rh/2);
+            if(val>0.97){
+                if((this.state==='hit'||this.state==='dead')&&this.lastHitBySp){
+                    // allow ring-out
+                } else {
+                    this.x=ring.cx+dx*(0.97/val); this.y=ring.cy+dy*(0.97/val);
+                    if(this.isBouncing){ this.isBouncing=false; this.state='idle'; this.vx=0; this.vy=0; }
+                    else if(this.state==='walk'){
+                        this.isBouncing=true;
+                        const len=Math.sqrt(dx*dx+dy*dy)||1;
+                        this.vx=(-dx/len)*this.speed*1.6; this.vy=(-dy/len)*this.speed*1.6;
+                        addPopup(this.x,this.y-38,'BOUNCE!','#00cfff',1.2); SoundBox.bounce();
+                    } else if(this.state==='hit'){ this.vx=0; this.vy=0; }
+                    else if(this.state==='dead'){ this.vx*=0.35; this.vy*=0.35; } // 端で止める
+                }
+            }
+        }
+    }
+
+    draw(c){
+        c.save(); c.translate(this.x,this.y);
+        if(this.isRingOut){ c.scale(.8,.8); c.filter='brightness(25%)'; }
+
+        // Upside-down for brain buster victim
+        if(this.state==='brain_buster_def') c.rotate(Math.PI);
+
+        // Shadow
+        c.fillStyle='rgba(0,0,0,0.5)'; c.shadowBlur=0;
+        c.beginPath(); c.ellipse(0,32,18,7,0,0,Math.PI*2); c.fill();
+
+        // Glow
+        if(this.isSpMode||this.state.startsWith('sp_')){ c.shadowColor='#ffd700'; c.shadowBlur=18; }
+        else if(this.isBouncing||this.bounceAttack){ c.shadowColor='#00cfff'; c.shadowBlur=14; }
+        else if(this.state==='guard'){ c.shadowColor='#00ff88'; c.shadowBlur=10; }
+        else if(this.state==='grabbing'||this.state==='grabbed'){ c.shadowColor='#ff9900'; c.shadowBlur=12; }
+        else if(this.state==='figure_four_atk'||this.state==='figure_four_def'){ c.shadowColor='#9933ff'; c.shadowBlur=14; }
+
+        if(this.state==='dead'){
+            c.rotate((Math.PI/2)*-this.facing); c.translate(-25*this.facing,22);
+        }
+
+        c.fillStyle=this.skinColor; c.fillRect(-12,-10,24,30);
+        c.fillStyle=this.pantsColor; c.fillRect(-12,12,24,14);
+        c.fillStyle=this.skinColor;
+        c.beginPath(); c.arc(this.armLX,this.armLY,6,0,Math.PI*2); c.fill();
+        c.fillRect(this.legLX-6,this.legLY,12,10);
+        c.fillStyle=this.pantsColor; c.fillRect(this.legLX-7,this.legLY+10,14,9);
+        c.shadowBlur=0;
+        c.fillStyle=this.maskColor; c.beginPath(); c.arc(0,this.headY,15,0,Math.PI*2); c.fill();
+        c.fillStyle='#fff'; c.fillRect(4*this.facing-2,this.headY-5,8,8);
+        if(this.state==='dead'){
+            c.strokeStyle='#000'; c.lineWidth=1.5;
+            c.beginPath(); c.moveTo(4*this.facing-2,this.headY-5); c.lineTo(4*this.facing+4,this.headY+1); c.stroke();
+            c.beginPath(); c.moveTo(4*this.facing+4,this.headY-5); c.lineTo(4*this.facing-2,this.headY+1); c.stroke();
+        } else { c.fillStyle='#000'; c.fillRect(4*this.facing+1,this.headY-3,3,3); }
+        c.fillStyle=this.skinColor;
+        c.beginPath(); c.arc(this.armRX,this.armRY,7,0,Math.PI*2); c.fill();
+        c.fillRect(this.legRX-6,this.legRY,12,10);
+        c.fillStyle=this.pantsColor; c.fillRect(this.legRX-7,this.legRY+10,14,9);
+        if(this.state==='hit'&&Math.floor(this.stateTimer/2)%2===0&&!this.isRingOut){
+            c.globalCompositeOperation='source-atop'; c.fillStyle='rgba(255,40,40,.55)';
+            c.fillRect(-22,-45,44,90); c.globalCompositeOperation='source-over';
+        }
+        c.restore();
+    }
+}
+
+// =============================================
+//  POPUPS
+// =============================================
+function addPopup(x,y,text,color,scale=1){ popups.push({x,y,text,color,life:70,maxLife:70,scale,vy:-.6}); }
+function drawPopups(){
+    for(let i=popups.length-1;i>=0;i--){
+        const p=popups[i]; p.y+=p.vy; p.life--;
+        const alpha=Math.min(1,p.life/15);
+        fxCtx.save(); fxCtx.globalAlpha=alpha;
+        fxCtx.font=`bold ${Math.round(13*p.scale)}px 'Press Start 2P',monospace`;
+        fxCtx.textAlign='center'; fxCtx.strokeStyle='#000'; fxCtx.lineWidth=4;
+        fxCtx.strokeText(p.text,p.x,p.y); fxCtx.fillStyle=p.color; fxCtx.fillText(p.text,p.x,p.y);
+        fxCtx.restore();
+        if(p.life<=0) popups.splice(i,1);
+    }
+}
+
+// =============================================
+//  FACE PORTRAIT
+// =============================================
+function drawFace(canvas,fighter){
+    const c=canvas.getContext('2d'); const w=canvas.width,h=canvas.height;
+    c.clearRect(0,0,w,h); c.save();
+    const hpR=fighter.hp/fighter.maxHp, isDead=fighter.hp<=0||fighter.isRingOut;
+    const isSpMax=fighter.sp>=fighter.maxSp&&!isDead, isDamaged=fighter.state==='hit';
+    if(isDead){ c.fillStyle='#1a0000'; c.fillRect(0,0,w,h); }
+    else if(fighter.state==='figure_four_atk'||fighter.state==='figure_four_def'){
+        c.fillStyle='#1a0033'; c.fillRect(0,0,w,h);
+        if(Math.floor(Date.now()/200)%2===0){ c.fillStyle='rgba(153,51,255,.25)'; c.fillRect(0,0,w,h); }
+    } else if(isSpMax){
+        const t=Date.now()/60;
+        c.fillStyle=(Math.floor(t)%2===0)?fighter.maskColor:'#fff'; c.fillRect(0,0,w,h);
+        c.save(); c.translate(w/2,h/2); c.rotate(t*.08); c.fillStyle='rgba(0,0,0,.25)';
+        for(let i=0;i<12;i++){ c.rotate(Math.PI*2/12); c.beginPath(); c.moveTo(0,0); c.lineTo(12,w); c.lineTo(-12,w); c.fill(); }
+        c.restore();
+    } else if(hpR<.3){ c.fillStyle='#2a0500'; c.fillRect(0,0,w,h); if(Math.floor(Date.now()/300)%2===0){c.fillStyle='rgba(255,0,0,.2)';c.fillRect(0,0,w,h);} }
+    else{ c.fillStyle='#111'; c.fillRect(0,0,w,h); }
+    if(isDead) c.filter='grayscale(100%) brightness(40%)';
+    let ox=0,oy=0;
+    if(isDamaged&&!isDead){ox=(Math.random()-.5)*10;oy=(Math.random()-.5)*10;}
+    else if(isSpMax&&!isDead){ox=(Math.random()-.5)*2;oy=(Math.random()-.5)*2;}
+    c.translate(ox,oy);
+    c.fillStyle=fighter.maskColor; c.fillRect(16,14,48,56);
+    c.fillStyle=hpR<.3&&!isDead?'#e08080':fighter.skinColor; c.fillRect(22,28,34,42);
+    c.fillStyle='#000';
+    if(isDead){
+        c.lineWidth=5;c.strokeStyle='#000';
+        [[26,38,38,50],[38,38,26,50],[52,38,64,50],[64,38,52,50]].forEach(([x1,y1,x2,y2])=>{c.beginPath();c.moveTo(x1,y1);c.lineTo(x2,y2);c.stroke();});
+        c.fillRect(34,60,14,10);
+    } else if(isDamaged){
+        c.lineWidth=4;c.strokeStyle='#000';
+        c.beginPath();c.moveTo(38,38);c.lineTo(30,44);c.lineTo(38,50);c.stroke();
+        c.beginPath();c.moveTo(52,38);c.lineTo(60,44);c.lineTo(52,50);c.stroke();
+        c.fillRect(34,64,20,4);
+    } else if(hpR<.3){
+        c.fillRect(28,44,10,4);c.fillRect(50,44,10,4);
+        c.lineWidth=3;c.strokeStyle='#000';
+        c.beginPath();c.moveTo(32,64);c.lineTo(38,58);c.lineTo(44,64);c.lineTo(50,58);c.lineTo(56,64);c.stroke();
+        c.fillStyle='#5af';c.fillRect(16,32,6,8);
+    } else {
+        if(isSpMax){c.fillStyle='#fff';c.shadowColor='#ffd700';c.shadowBlur=12;}
+        c.beginPath();c.moveTo(26,38);c.lineTo(40,46);c.lineTo(26,46);c.fill();
+        c.beginPath();c.moveTo(62,38);c.lineTo(48,46);c.lineTo(62,46);c.fill();
+        c.shadowBlur=0;c.fillStyle='#000';c.fillRect(36,62,16,4);c.fillRect(32,60,4,4);
+    }
+    c.restore();
+}
+
+// =============================================
+//  HIT FLASH
+// =============================================
+function triggerHitFlash(who){
+    hitFlash.className=`flash-${who}`;
+    setTimeout(()=>{hitFlash.className='';},180);
+}
+
+// =============================================
+//  SYSTEM LOG
+// =============================================
+let logTO=null;
+function showSystemLog(text,color='#ffd700'){
+    systemLog.innerHTML=text; systemLog.style.color=color;
+    clearTimeout(logTO); logTO=setTimeout(()=>{if(systemLog.innerHTML===text)systemLog.innerHTML='';},2800);
+}
+
+// =============================================
+//  WIN DOTS
+// =============================================
+function updateWinDots(){
+    ['p1','p2'].forEach(p=>[1,2].forEach(n=>{
+        const el=document.getElementById(`wd-${p}-${n}`);
+        el.className='win-dot'+(wins[p]>=n?` ${p}`:'');
+    }));
+}
+
+// =============================================
+//  GRAB SYSTEM
+// =============================================
+function attemptGrabFor(atk, def){
+    if(!['idle','walk'].includes(atk.state)||atk.isRingOut) return;
+    if(def.hp<=0||def.isRingOut) return;
+    const dx=def.x-atk.x, dy=def.y-atk.y;
+    const dist=Math.sqrt(dx*dx+dy*dy);
+    atk.facing=dx>0?1:-1;
+    if(dist<85){
+        atk.state='grabbing'; atk.stateTimer=0; atk.hasHit=false;
+        atk.vx=0; atk.vy=0;
+        def.state='grabbed'; def.stateTimer=0; def.vx=0; def.vy=0;
+        addPopup(atk.x,atk.y-45,'GRAB!!','#ff9900',1.4);
+        SoundBox.grab();
+        grabPrompt.style.display='block';
+        showSystemLog('🤼 掴み！ TAP:投げ ↑:バスター ↓:四の字 →:頭突き ←:BACKDROP','#ff9900');
+    } else {
+        atk.state='walk';
+        atk.vx=(dx/dist)*atk.speed*1.8; atk.vy=(dy/dist)*atk.speed*1.8;
+        addPopup(atk.x,atk.y-35,'MISS..','#666',.9);
+    }
+}
+function attemptGrab(){ attemptGrabFor(player, cpu); }
+
+function executeGrabMove(move, fromNet=false){
+    // grabbing側とgrabbed側を特定
+    let atk, def;
+    if(player.state==='grabbing' && cpu.state==='grabbed'){
+        atk=player; def=cpu;
+    } else if(cpu.state==='grabbing' && player.state==='grabbed'){
+        atk=cpu; def=player;
+    } else { return; }
+
+    grabPrompt.style.display='none';
+
+    if(move==='rope_throw'){
+        atk.state='rope_throw_atk'; atk.stateTimer=0;
+        def.state='rope_thrown'; def.stateTimer=0; def.skipBoundary=false;
+        const dir=atk.facing;
+        def.vx=dir*10; def.vy=-1.5;
+        addPopup(atk.x,atk.y-45,'ROPE THROW!','#ff9900',1.3);
+        SoundBox.ropeThrow();
+        showSystemLog('🏃 ロープに投げた！バウンスしたらラリアット！','#ff9900');
+    } else if(move==='brain_buster'){
+        atk.state='brain_buster_atk'; atk.stateTimer=0; atk.hasHit=false;
+        def.state='brain_buster_def'; def.stateTimer=0;
+        def.vx=0; def.vy=0;
+        addPopup(atk.x,atk.y-55,'BRAIN BUSTER!!','#ff4444',1.5);
+        SoundBox.spAura();
+        showSystemLog('💥 ブレーンバスター！！','#ff4444');
+    } else if(move==='headbutt'){
+        atk.state='headbutt_atk'; atk.stateTimer=0; atk.hasHit=false;
+        def.state='headbutt_def'; def.stateTimer=0; def.vx=0; def.vy=0;
+        addPopup(atk.x,atk.y-45,'頭突き!!','#ff6600',1.4);
+        SoundBox.hit();
+        showSystemLog('💥 頭突き！','#ff6600');
+    } else if(move==='backdrop'){
+        atk.state='backdrop_atk'; atk.stateTimer=0; atk.hasHit=false;
+        def.state='backdrop_def'; def.stateTimer=0; def.vx=0; def.vy=0;
+        atk.facing=-atk.facing;
+        addPopup(atk.x,atk.y-50,'BACKDROP!!','#cc44ff',1.5);
+        SoundBox.spAura();
+        showSystemLog('🔄 バックドロップ！！','#cc44ff');
+    } else if(move==='figure_four'){
+        atk.state='figure_four_atk'; atk.stateTimer=0;
+        def.state='figure_four_def'; def.stateTimer=0;
+        figureFourActive=true; figureFourTimer=0; figFourTapFrames=[];
+        def.vx=0; def.vy=0;
+        atk.x=def.x-atk.facing*32; atk.y=def.y+18;
+        atk.vx=0; atk.vy=0;
+        ffBar.style.display='flex'; ffFill.style.width='100%';
+        addPopup(def.x,def.y-55,'四の字固め！','#9933ff',1.6);
+        SoundBox.figFour();
+        showSystemLog('🦵 四の字固め！ロープへ逃げろ！','#9933ff');
+    }
+}
+
+// =============================================
+//  FIGURE FOUR UPDATE
+// =============================================
+function updateFigureFour(){
+    if(!figureFourActive) return;
+    figureFourTimer++;
+
+    // どちらが figure_four_atk か判定
+    let ffAtk=null, ffDef=null;
+    if(player.state==='figure_four_atk'&&cpu.state==='figure_four_def'){ ffAtk=player; ffDef=cpu; }
+    else if(cpu.state==='figure_four_atk'&&player.state==='figure_four_def'){ ffAtk=cpu; ffDef=player; }
+    if(!ffAtk){ releaseFigureFour(); return; }
+
+    // 攻撃側がCPUに追従（引きずられる）
+    const targetPx=ffDef.x-ffAtk.facing*34;
+    const targetPy=ffDef.y+16;
+    ffAtk.x+=(targetPx-ffAtk.x)*0.3;
+    ffAtk.y+=(targetPy-ffAtk.y)*0.3;
+    ffAtk.vx=0; ffAtk.vy=0;
+
+    // Damage tick
+    if(figureFourTimer%45===0){
+        ffDef.hp=Math.max(0,ffDef.hp-10); ffDef.updateUI();
+        addPopup(ffDef.x,ffDef.y-28,'-10','#9933ff',1.1);
+        spawnHitParticles(ffDef.x,ffDef.y,'#9933ff',6);
+        SoundBox.figFour();
+        if(ffDef.hp<=0){ releaseFigureFour(); checkGameOver(); return; }
+    }
+
+    // 連打判定
+    const recentTaps=figFourTapFrames.filter(f=>frameCount-f<90).length;
+    const isMashing=recentTaps>=2;
+
+    // 被攻撃側の脱出速度
+    if(figureFourTimer%10===0){
+        const dx=ffDef.x-ring.cx, dy=ffDef.y-ring.cy;
+        const len=Math.sqrt(dx*dx+dy*dy)||1;
+        const escSpeed=isMashing?0.18:1.8;
+        ffDef.vx=(dx/len)*escSpeed+(Math.random()-.5)*(isMashing?.1:.3);
+        ffDef.vy=(dy/len)*escSpeed+(Math.random()-.5)*(isMashing?.1:.3);
+    }
+
+    if(isMashing&&figureFourTimer%20===0){
+        addPopup(ffAtk.x,ffAtk.y-28,'HOLD!!','#9933ff',.9);
+    }
+
+    // Progress bar
+    const dx=ffDef.x-ring.cx, dy=ffDef.y-ring.cy;
+    const val=Math.abs(dx)/(ring.rw/2)+Math.abs(dy)/(ring.rh/2);
+    ffFill.style.width=`${(1-Math.min(1,val/0.92))*100}%`;
+    ffFill.style.background=isMashing?'linear-gradient(90deg,#cc66ff,#fff)':'linear-gradient(90deg,#9933ff,#cc66ff)';
+
+    if(val>0.92){
+        releaseFigureFour();
+        addPopup(ffDef.x,ffDef.y-42,'ROPE BREAK!','#00ff88',1.3);
+        showSystemLog('🔔 ロープブレイク！四の字解除！','#00ff88');
+        SoundBox.bounce(); return;
+    }
+    if(figureFourTimer>900) releaseFigureFour();
+}
+
+function releaseFigureFour(){
+    figureFourActive=false; ffBar.style.display='none';
+    let ffAtk=null, ffDef=null;
+    if(player.state==='figure_four_atk'){ ffAtk=player; ffDef=cpu; }
+    else if(cpu.state==='figure_four_atk'){ ffAtk=cpu; ffDef=player; }
+    if(ffAtk){ ffAtk.state='idle'; ffAtk.stateTimer=0; ffAtk.skipBoundary=false; ffAtk.vx=-ffAtk.facing*2; ffAtk.vy=0; }
+    if(ffDef){ ffDef.state='hit'; ffDef.stateTimer=0; ffDef.vx=(ffAtk?ffAtk.facing:1)*3; ffDef.vy=0; ffDef.skipBoundary=false; }
+}
+
+// =============================================
+//  HEADBUTT UPDATE
+// =============================================
+function updateHeadbutt(){
+    // どちらが headbutt_atk か判定
+    let atk=null, def=null;
+    if(player.state==='headbutt_atk'&&cpu.state==='headbutt_def'){ atk=player; def=cpu; }
+    else if(cpu.state==='headbutt_atk'&&player.state==='headbutt_def'){ atk=cpu; def=player; }
+    if(!atk) return;
+    def.x=atk.x+atk.facing*30; def.y=atk.y;
+    if(atk.stateTimer===12&&!atk.hasHit){
+        atk.hasHit=true;
+        const dmg=18;
+        def.hp=Math.max(0,def.hp-dmg); def.stateTimer=0;
+        def.addSp(dmg*1.2); def.updateUI();
+        def.state='hit'; def.vy=-2; def.vx=atk.facing*5;
+        addPopup(def.x,def.y-20,`-${dmg}`,'#ff6600',1.4);
+        spawnHitParticles(def.x,def.y,'#ff6600',10,false);
+        SoundBox.hit(); triggerHitFlash(def===cpu?'p2':'p1');
+        currentCombo++; comboTimer=120; updateComboDisplay();
+        showSystemLog(`💥 頭突き直撃！ -${dmg}！`,'#ff6600');
+    }
+}
+
+// =============================================
+//  BACKDROP UPDATE
+// =============================================
+function updateBackdrop(){
+    let atk=null, def=null;
+    if(player.state==='backdrop_atk'&&cpu.state==='backdrop_def'){ atk=player; def=cpu; }
+    else if(cpu.state==='backdrop_atk'&&player.state==='backdrop_def'){ atk=cpu; def=player; }
+    if(!atk) return;
+    if(atk.stateTimer<22){
+        def.x=atk.x+(-atk.facing)*(10+atk.stateTimer*1.2);
+        def.y=atk.y-Math.sin((atk.stateTimer/22)*Math.PI)*35;
+    }
+    if(atk.stateTimer===22&&!atk.hasHit){
+        atk.hasHit=true;
+        const dmg=32;
+        def.hp=Math.max(0,def.hp-dmg); def.stateTimer=0;
+        def.addSp(dmg*1.2); def.updateUI();
+        def.state='hit'; def.vy=5; def.vx=(-atk.facing)*3;
+        addPopup(def.x,def.y,`-${dmg}`,'#cc44ff',1.6);
+        spawnHitParticles(def.x,def.y,'#cc44ff',16,true);
+        SoundBox.spHit(); triggerHitFlash(def===cpu?'p2':'p1'); SoundBox.crowd();
+        currentCombo+=2; comboTimer=120; updateComboDisplay();
+        showSystemLog(`🔄 バックドロップ炸裂！ -${dmg}！`,'#cc44ff');
+        if(def.hp<=0) checkGameOver();
+    }
+}
+
+// =============================================
+//  BRAIN BUSTER UPDATE
+// =============================================
+function updateBrainBuster(){
+    let atk=null, def=null;
+    if(player.state==='brain_buster_atk'&&cpu.state==='brain_buster_def'){ atk=player; def=cpu; }
+    else if(cpu.state==='brain_buster_atk'&&player.state==='brain_buster_def'){ atk=cpu; def=player; }
+    if(!atk) return;
+    if(atk.stateTimer<28){
+        def.x=atk.x; def.y=atk.y-30-atk.stateTimer*1.4;
+    } else {
+        def.x=atk.x; def.y=atk.y-30+(atk.stateTimer-28)*9;
+    }
+    if(atk.stateTimer===30&&!atk.hasHit){
+        atk.hasHit=true;
+        const dmg=40;
+        def.hp=Math.max(0,def.hp-dmg); def.stateTimer=0;
+        def.addSp(dmg*1.2); def.updateUI();
+        def.state='hit'; def.vy=5; def.vx=0;
+        addPopup(def.x,def.y,`-${dmg}`,'#ff4444',1.6);
+        spawnHitParticles(def.x,def.y,'#ff4444',16,true);
+        SoundBox.spHit(); triggerHitFlash(def===cpu?'p2':'p1');
+        showSystemLog('💥 ブレーンバスター直撃！ -40！','#ff4444');
+        SoundBox.crowd();
+        currentCombo+=2; comboTimer=120; updateComboDisplay();
+        if(def.hp<=0) checkGameOver();
+    }
+}
+
+// =============================================
+//  COLLISION
+// =============================================
+function getActiveFrames(state,timer){
+    if(state==='jab'     &&timer>3 &&timer<8)  return true;
+    if(state==='hook'    &&timer>5 &&timer<16) return true; // low kick
+    if(state==='kick'    &&timer>7 &&timer<20) return true; // high kick
+    if(state==='lariat'  &&timer>4 &&timer<18) return true;
+    if(state==='sp_jab'  &&timer>5 &&timer<30) return true;
+    if(state==='sp_hook' &&timer>10&&timer<28) return true;
+    if(state==='sp_kick' &&timer>10&&timer<28) return true;
+    return false;
+}
+
+function checkCollision(atk,def){
+    if(atk.hasHit||def.hp<=0||def.isRingOut) return;
+    if(!getActiveFrames(atk.state,atk.stateTimer)) return;
+    // No collision during grab sequence or figure four
+    if(atk.state==='grabbing'||def.state==='grabbed') return;
+    if(figureFourActive) return;
+
+    const hbW=atk.state==='lariat'?56:42, hbH=44;
+    const hbX=atk.facing===1?atk.x+6:atk.x-hbW-6;
+    const hbY=atk.y-24;
+    const dL=def.x-def.width/2, dR=def.x+def.width/2;
+    const dT=def.y-def.height/2, dB=def.y+def.height/2;
+    if(hbX<dR&&hbX+hbW>dL&&hbY<dB&&hbY+hbH>dT){
+        atk.hasHit=true;
+
+        // Parry check (matching categories)
+        const atkCat=atk.getActionCategory(atk.state);
+        const defCat=def.getActionCategory(def.state);
+        if(defCat!==null&&atkCat===defCat){
+            addPopup(def.x,def.y-45,'PARRY!','#00ff88',1.3);
+            def.addSp(60); atk.addSp(20);
+            atk.x-=atk.facing*12; def.x-=def.facing*12;
+            showSystemLog('🛡️ パリィ！ (SP大幅UP)','#00ff88');
+            SoundBox.guard(); spawnHitParticles((atk.x+def.x)/2,(atk.y+def.y)/2,'#00ff88',10);
+            return;
+        }
+
+        let dmg=4, kbY=(Math.random()-.5)*4;
+        if(atk.state==='hook')    { dmg=6; }
+        if(atk.state==='kick')    { dmg=10; kbY=Math.random()>.5?-4:4; }
+        if(atk.state==='lariat')  { dmg=12; kbY=(Math.random()-.5)*6; }
+        if(atk.state==='sp_jab')  { dmg=28; }
+        if(atk.state==='sp_hook') { dmg=35; }
+        if(atk.state==='sp_kick') { dmg=45; kbY=Math.random()>.5?-7:7; }
+
+        if(atk.bounceAttack){
+            dmg=Math.floor(dmg*1.6);
+            addPopup(def.x,def.y-55,'CRITICAL!!','#ff9900',1.4);
+            spawnHitParticles(def.x,def.y,'#ff9900',14,true);
+        }
+
+        // バウンス中の守備側もダメージ増加（突っ込んできた方が危険）
+        if(def.isBouncing||def.state==='rope_thrown'){
+            dmg=Math.floor(dmg*1.5);
+            addPopup(def.x,def.y-44,'COUNTER!','#ff6600',1.2);
+        }
+
+        const kbX=atk.facing*(atk.state.startsWith('sp_')?3.5:1);
+        const isSp=atk.state.startsWith('sp_');
+        def.takeDamage(dmg,kbX,kbY,isSp);
+        addPopup(def.x,def.y-25,`-${dmg}`,'#ef4444',isSp?1.5:1);
+        spawnHitParticles(def.x,def.y-10,isSp?'#ffd700':'#ff4444',isSp?12:6,isSp);
+
+        if(atk.isPlayer){ currentCombo++; comboTimer=120; updateComboDisplay(); }
+        isSp?SoundBox.spHit():SoundBox.hit();
+    }
+}
+
+// =============================================
+//  COMBO
+// =============================================
+function updateComboDisplay(){
+    if(currentCombo>=2){
+        comboDisplay.style.display='block';
+        comboCountEl.textContent=`${currentCombo}`;
+        comboCountEl.style.color=currentCombo>=5?'#ff4444':'#ffd700';
+        if(currentCombo>=3) showSystemLog(`🔥 ${currentCombo} HIT COMBO!!`,currentCombo>=5?'#ff4444':'#ffd700');
+    } else { comboDisplay.style.display='none'; }
+}
+
+// =============================================
+//  RING OUT / GAME OVER
+// =============================================
+function checkRingOut(f){
+    if(f.isRingOut||gameState==='ko'||gameState==='result') return;
+    // SP攻撃による吹き飛ばし状態のみリングアウト判定（それ以外は場外に出ない）
+    if(!f.lastHitBySp||(f.state!=='hit'&&f.state!=='dead')) return;
+    const dx=f.x-ring.cx, dy=f.y-ring.cy;
+    const val=Math.abs(dx)/(ring.rw/2)+Math.abs(dy)/(ring.rh/2);
+    if(val>1.06){
+        f.isRingOut=true;
+        f.ringOutDir=dy<0?(dx<0?'top-left':'top-right'):(dx<0?'bottom-left':'bottom-right');
+        f.hp=0; f.state='dead'; f.y+=ring.depth+12; f.updateUI();
+        handleMatchEnd('RING OUT!!','#38ef7d','⚠️ 場外転落決着！');
+    }
+}
+function checkGameOver(){
+    if(gameState==='ko'||gameState==='result') return;
+    if((player.hp<=0&&!player.isRingOut)||(cpu.hp<=0&&!cpu.isRingOut))
+        handleMatchEnd('K.O.!!!!','#ef4444','🏆 完全決着！！');
+    if(matchTimer<=0&&gameState==='playing'){
+        const pwin=player.hp>=cpu.hp;
+        handleMatchEnd(pwin?'YOU WIN!':'CPU WIN!',pwin?'#00cfff':'#ff4444','⏱ 時間切れ決着！');
+    }
+}
+function handleMatchEnd(msgText,msgColor,logText){
+    if(gameState==='ko'||gameState==='result') return; // 二重発火防止
+    gameState='ko'; input.left.active=false;
+    if(figureFourActive){ figureFourActive=false; ffBar.style.display='none'; }
+    grabPrompt.style.display='none'; comboDisplay.style.display='none';
+    // Win tracking
+    const p1won=cpu.hp<=0||cpu.isRingOut||(matchTimer<=0&&player.hp>=cpu.hp);
+    if(p1won) wins.p1=Math.min(2,wins.p1+1); else wins.p2=Math.min(2,wins.p2+1);
+    updateWinDots();
+    SoundBox.ko();
+    // オンライン：相手側にも KO を通知して状態を強制同期
+    if(onlineMode && netReady){
+        // 自分側のloser判定（myFighterが負けた側かどうか）
+        const myFighterLost = myFighter().hp <= 0 || myFighter().isRingOut;
+        netSend({t:'ko',
+            loser: myFighterLost ? 'me' : 'opp',
+            msg: msgText, color: msgColor, log: logText
+        });
+    }
+    setTimeout(()=>{
+        SoundBox.gongEnd(); showCenterMsg(msgText,msgColor); showSystemLog(logText); SoundBox.crowd();
+        setTimeout(()=>{ gameState='result'; retryBtn.style.display='block'; },2200);
+    },600);
+}
+function showCenterMsg(text,color){
+    centerMsg.textContent=text; centerMsg.style.color=color;
+    centerMsg.style.textShadow=`4px 4px 0 #000,-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,0 0 30px ${color}`;
+    centerMsg.classList.remove('msg-show'); centerMsg.style.display='block';
+    void centerMsg.offsetWidth; centerMsg.classList.add('msg-show');
+}
+
+// =============================================
+//  CPU AI
+// =============================================
+function updateCPU(){
+    if(cpu.hp<=0||cpu.isRingOut||gameState!=='playing') return;
+    // Figure four escape
+    if(cpu.state==='figure_four_def'){
+        // updateFigureFour()がcpu.vx/vyを設定するので、ここでは何もしない
+        return;
+    }
+    if(!['idle','walk','powerup'].includes(cpu.state)) return;
+    const dx=player.x-cpu.x, dy=player.y-cpu.y;
+    const dist=Math.sqrt(dx*dx+dy*dy);
+    cpu.facing=dx>0?1:-1;
+    if(cpu.sp>=cpu.maxSp&&!cpu.isSpMode&&Math.random()<.04){ cpu.enterSpMode(); return; }
+    if(dist<65){
+        cpu.vx=0; cpu.vy=0;
+        if(Math.random()<.045){
+            const r=Math.random();
+            cpu.doAction(r<.33?'jab':r<.66?'kick':'hook');
+        } else cpu.state='idle';
+    } else if(dist<300){
+        cpu.state='walk';
+        if(!cpu.isBouncing){ cpu.vx=(dx/dist)*cpu.speed*.65; cpu.vy=(dy/dist)*cpu.speed*.65; }
+    } else {
+        if(!cpu.isBouncing){ cpu.state='idle'; cpu.vx=0; cpu.vy=0; }
+    }
+}
+
+// =============================================
+//  TIMER
+// =============================================
+function updateTimer(){
+    if(gameState!=='playing') return;
+    timerTick++;
+    if(timerTick>=60){
+        timerTick=0; matchTimer=Math.max(0,matchTimer-1);
+        timerDisplay.textContent=matchTimer<10?`0${matchTimer}`:matchTimer;
+        if(matchTimer<=10){ timerDisplay.classList.add('danger'); if(matchTimer>0) SoundBox.timerWarn(); }
+    }
+}
+
+// =============================================
+//  INPUT
+// =============================================
+const input={
+    left:{ active:false,pointerId:null,startX:0,startY:0,dx:0,dy:0 },
+    right:{ active:false,pointerId:null,startX:0,startY:0,startTime:0 }
+};
+const SWIPE_THRESH=26;
+
+touchLayer.addEventListener('pointerdown',e=>{
+    if(gameState!=='playing') return;
+    const rect=touchLayer.getBoundingClientRect();
+    const x=e.clientX-rect.left, y=e.clientY-rect.top;
+    if(x<rect.width/2){
+        if(!input.left.active) input.left={active:true,pointerId:e.pointerId,startX:x,startY:y,dx:0,dy:0};
+    } else {
+        if(!input.right.active) input.right={active:true,pointerId:e.pointerId,startX:x,startY:y,startTime:Date.now()};
+    }
+});
+
+touchLayer.addEventListener('pointermove',e=>{
+    if(!input.left.active||e.pointerId!==input.left.pointerId) return;
+    const rect=touchLayer.getBoundingClientRect();
+    const x=e.clientX-rect.left, y=e.clientY-rect.top;
+    let dx=x-input.left.startX, dy=y-input.left.startY;
+    const maxD=40, dist=Math.sqrt(dx*dx+dy*dy);
+    if(dist>maxD){ dx=(dx/dist)*maxD; dy=(dy/dist)*maxD; input.left.startX=x-dx; input.left.startY=y-dy; }
+    input.left.dx=dx/maxD; input.left.dy=dy/maxD;
+});
+
+function onPointerEnd(e){
+    if(input.left.active&&e.pointerId===input.left.pointerId){
+        input.left.active=false; input.left.dx=0; input.left.dy=0;
+    }
+    if(input.right.active&&e.pointerId===input.right.pointerId){
+        input.right.active=false;
+        if(gameState!=='playing') return;
+
+        const rect=touchLayer.getBoundingClientRect();
+        const dx=(e.clientX-rect.left)-input.right.startX;
+        const dy=(e.clientY-rect.top)-input.right.startY;
+        const dist=Math.sqrt(dx*dx+dy*dy);
+        const me=myFighter(), opp=oppFighter();
+
+        // ---- 四の字固め連打 ----
+        if(me.state==='figure_four_atk'&&figureFourActive){
+            if(dist<SWIPE_THRESH){
+                figFourTapFrames.push(frameCount);
+                figFourTapFrames=figFourTapFrames.filter(f=>frameCount-f<120);
+                if(onlineMode) netSend({t:'ff_tap'});
+            }
+            return;
+        }
+
+        // ---- 掴みフォローアップ ----
+        if(me.state==='grabbing'&&opp.state==='grabbed'){
+            if(dist<SWIPE_THRESH){
+                executeGrabMove('rope_throw');
+                if(onlineMode) netSend({t:'grab_move', move:'rope_throw'});
+            } else if(Math.abs(dy)>Math.abs(dx)*1.1){
+                const move=dy<0?'brain_buster':'figure_four';
+                executeGrabMove(move);
+                if(onlineMode) netSend({t:'grab_move', move});
+            } else {
+                const towardOpp=(dx>0)===(opp.x>me.x);
+                const move=towardOpp?'headbutt':'backdrop';
+                executeGrabMove(move);
+                if(onlineMode) netSend({t:'grab_move', move});
+            }
+            return;
+        }
+
+        // ---- 通常攻撃 ----
+        const okStates=['idle','walk','powerup'];
+        if(!okStates.includes(me.state)) return;
+
+        if(dist<SWIPE_THRESH){
+            if(me.isBouncing){
+                me.doAction('lariat');
+                if(onlineMode) netSend({t:'action', a:'lariat'});
+            } else {
+                me.doAction('jab');
+                if(onlineMode) netSend({t:'action', a:'jab'});
+            }
+        } else if(Math.abs(dy)>Math.abs(dx)*1.15){
+            const a = dy<0?'kick':'hook';
+            me.doAction(a);
+            if(onlineMode) netSend({t:'action', a});
+        } else {
+            const towardOpp=(dx>0)===(opp.x>me.x);
+            if(towardOpp){
+                if(onlineMode) netSend({t:'grab'});
+                attemptGrabFor(me, opp);
+            } else {
+                me.doAction('guard');
+                if(onlineMode) netSend({t:'guard'});
+            }
+        }
+    }
+}
+touchLayer.addEventListener('pointerup',onPointerEnd);
+touchLayer.addEventListener('pointercancel',onPointerEnd);
+touchLayer.addEventListener('contextmenu',e=>e.preventDefault());
+
+// SP button
+btnSp.addEventListener('pointerdown',e=>{
+    e.stopPropagation();
+    if(gameState==='playing'){
+        myFighter().enterSpMode();
+        if(onlineMode) netSend({t:'sp'});
+    }
+});
+
+// =============================================
+//  FIGHTERS
+// =============================================
+const player=new Fighter('#00cfff','#003366',true);
+const cpu   =new Fighter('#ff4444','#660000',false);
+
+// =============================================
+//  RESIZE
+// =============================================
+function resizeCanvas(){
+    const w=touchLayer.clientWidth, h=touchLayer.clientHeight;
+    [canvas,bgCanvas,fxCanvas].forEach(c=>{c.width=w;c.height=h;});
+    ring.cx=w/2; ring.cy=h*0.44; ring.rw=w-12; ring.rh=ring.rw*0.62; ring.depth=68;
+    pts.top   ={x:ring.cx,y:ring.cy-ring.rh/2};
+    pts.bottom={x:ring.cx,y:ring.cy+ring.rh/2};
+    pts.left  ={x:ring.cx-ring.rw/2,y:ring.cy};
+    pts.right ={x:ring.cx+ring.rw/2,y:ring.cy};
+    drawStaticBackground();
+}
+window.addEventListener('resize',resizeCanvas);
+setTimeout(resizeCanvas,100);
+
+// =============================================
+//  MAIN LOOP
+// =============================================
+function update(){
+    frameCount++;
+
+    // Combo decay
+    if(comboTimer>0){ comboTimer--; if(comboTimer<=0&&currentCombo>0){ currentCombo=0; comboDisplay.style.display='none'; } }
+
+    if(gameState==='playing'){
+        updateTimer();
+
+        // ---- 自分のキャラ移動 ----
+        const me = myFighter(), opp = oppFighter();
+        if(me.isBouncing){
+            if(me.vx>0) me.facing=1; else me.facing=-1;
+        } else if(input.left.active&&['idle','walk'].includes(me.state)){
+            me.vx=input.left.dx*me.speed; me.vy=input.left.dy*me.speed;
+            if(Math.abs(me.vx)>.1||Math.abs(me.vy)>.1){
+                me.state='walk';
+                if(me.vx>.5) me.facing=1; if(me.vx<-.5) me.facing=-1;
+            }
+        } else if(me.state==='walk'){ me.vx=0; me.vy=0; me.state='idle'; }
+
+        // ネット送信：移動（3フレームに1回）
+        if(onlineMode && frameCount%3===0){
+            netSend({t:'move', dx:input.left.dx, dy:input.left.dy});
+        }
+        // ネット送信：状態同期（60フレームに1回＝約1秒）
+        if(onlineMode && frameCount%60===0){
+            const me2 = myFighter();
+            netSend({t:'sync', x:me2.x, y:me2.y, hp:me2.hp, sp:me2.sp, facing:me2.facing});
+        }
+
+        // ---- 相手キャラの移動（オンライン時はネット入力、ローカルはAI） ----
+        if(onlineMode && netReady){
+            // ネット受信した移動を相手に適用
+            if(opp.isBouncing){
+                if(opp.vx>0) opp.facing=1; else opp.facing=-1;
+            } else if(['idle','walk'].includes(opp.state)){
+                if(Math.abs(remoteMove.dx)>.05 || Math.abs(remoteMove.dy)>.05){
+                    opp.vx=remoteMove.dx*opp.speed; opp.vy=remoteMove.dy*opp.speed;
+                    opp.state='walk';
+                    if(opp.vx>.5) opp.facing=1; if(opp.vx<-.5) opp.facing=-1;
+                } else if(opp.state==='walk'){ opp.vx=0; opp.vy=0; opp.state='idle'; }
+            }
+        } else if(!onlineMode){
+            updateCPU();
+        }
+
+        checkCollision(player,cpu);
+        checkCollision(cpu,player);
+    }
+
+    // Always update positions
+    player.update(); cpu.update();
+
+    // Sync grabbed fighter
+    if(player.state==='grabbing'&&cpu.state==='grabbed'){
+        cpu.x=player.x+player.facing*28; cpu.y=player.y; cpu.facing=-player.facing;
+    }
+
+    updateHeadbutt();
+    updateBackdrop();
+    updateBrainBuster();
+
+    // Figure four management
+    if(figureFourActive) updateFigureFour();
+
+    if(gameState==='playing'){
+        checkRingOut(player); checkRingOut(cpu); checkGameOver();
+    }
+    updateParticles();
+}
+
+function draw(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    fxCtx.clearRect(0,0,fxCanvas.width,fxCanvas.height);
+
+    const entities=[player,cpu];
+    const bgEnt=entities.filter(e=>e.isRingOut&&e.ringOutDir.startsWith('top'));
+    bgEnt.forEach(e=>e.draw(ctx));
+    if(canvas.width>0) drawRingBackground(ctx);
+    const fgEnt=entities.filter(e=>!bgEnt.includes(e)).sort((a,b)=>a.y-b.y);
+    fgEnt.forEach(e=>e.draw(ctx));
+    if(canvas.width>0) drawRingForeground(ctx);
+
+    // Left stick joystick visual
+    if(input.left.active&&gameState==='playing'){
+        const sx=input.left.startX, sy=input.left.startY;
+        fxCtx.beginPath(); fxCtx.arc(sx,sy,38,0,Math.PI*2);
+        fxCtx.fillStyle='rgba(255,255,255,.07)'; fxCtx.fill();
+        fxCtx.strokeStyle='rgba(255,255,255,.2)'; fxCtx.lineWidth=2; fxCtx.stroke();
+        fxCtx.beginPath(); fxCtx.arc(sx+input.left.dx*38,sy+input.left.dy*38,14,0,Math.PI*2);
+        fxCtx.fillStyle='rgba(255,255,255,.4)'; fxCtx.fill();
+    }
+
+    // Right side attack zone hint
+    if(gameState==='playing'&&!input.right.active){
+        fxCtx.save(); fxCtx.globalAlpha=.04;
+        fxCtx.fillStyle='#fff';
+        fxCtx.fillRect(canvas.width/2,0,canvas.width/2,canvas.height);
+        fxCtx.restore();
+    }
+
+    drawPopups(); drawParticles();
+    if(canvas.width>0){ drawFace(faceCanvas1,player); drawFace(faceCanvas2,cpu); }
+}
+
+function gameLoop(){
+    if(canvas.width>0){ update(); draw(); }
+    requestAnimationFrame(gameLoop);
+}
+
+function startGameSequence(){
+    player.reset(); cpu.reset(); popups=[]; particles=[];
+    matchTimer=60; timerTick=0; currentCombo=0; comboTimer=0;
+    figureFourActive=false; figureFourTimer=0; figFourTapFrames=[]; ffBar.style.display='none';
+    grabPrompt.style.display='none';
+    timerDisplay.textContent='60'; timerDisplay.classList.remove('danger');
+    gameState='ready'; retryBtn.style.display='none'; startInitBtn.style.display='none';
+    comboDisplay.style.display='none'; systemLog.innerHTML='';
+    btnSp.classList.remove('sp-ready');
+
+    // オンライン時の名前表示
+    const p1name = document.querySelector('.fighter-hud.left .fighter-name');
+    const p2name = document.querySelector('.fighter-hud.right .fighter-name');
+    if(onlineMode){
+        // HOST(isP2=false): 自分=player(左・青), 相手=cpu(右・赤)
+        // GUEST(isP2=true): 自分=cpu(右・赤), 相手=player(左・青)
+        p1name.textContent = isP2 ? '◀ OPP' : '◀ YOU';
+        p2name.textContent = isP2 ? 'YOU ▶' : 'OPP ▶';
+        p1name.style.color = 'var(--p1)';
+        p2name.style.color = 'var(--p2)';
+    } else {
+        p1name.textContent = '◀ 1P YOU';
+        p2name.textContent = 'CPU ▶';
+    }
+
+    showCenterMsg('試合開始!!','#ffffff');
+    SoundBox.gongStart();
+    setTimeout(()=>{ centerMsg.style.display='none'; gameState='playing'; },1600);
+}
+
+startInitBtn.addEventListener('click', e=>{
+    // online-open-btn やモーダル内のクリックは無視
+    if(e.target.closest('#online-open-btn, #online-modal')) return;
+    SoundBox.init();
+    startGameSequence();
+});
+retryBtn.addEventListener('click',()=>{
+    retryBtn.style.display='none';
+    if(onlineMode) netSend({t:'rematch'});
+    startGameSequence();
+});
+
+setTimeout(()=>{ player.reset(); cpu.reset(); gameLoop(); },200);
+</script>
+
+</body>
+</html>
